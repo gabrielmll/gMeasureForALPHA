@@ -1,3 +1,3 @@
 # gMeasureForALPHA
 
-Searching for a way of agglomerating extracted patterns into bigger and more relevant ones.
+Searching for a way of agglomerating extracted patterns into bigger and more relevant ones.`

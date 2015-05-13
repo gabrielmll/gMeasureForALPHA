@@ -29,3 +29,8 @@
 
 # Examples
 example/
+
+# Eclipse c++
+.cproject
+.project
+.settings/

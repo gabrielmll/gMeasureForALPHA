@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -36,40 +36,41 @@ class SkyPatternTree: public Tree
   SkyPatternTree() = delete;
   SkyPatternTree(const SkyPatternTree&) = delete;
   SkyPatternTree(SkyPatternTree&&) = delete;
-  SkyPatternTree(const char* dataFileName, const float densityThreshold, const vector<double>& epsilonVector, const vector<unsigned int>& cliqueDimensions, const vector<double>& tauVector, const vector<unsigned int>& minSizes, const unsigned int minArea, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparator, const char* patternSizeSeparator, const char* sizeSeparator, const char* sizeAreaSeparator, const bool isSizePrinted, const bool isAreaPrinted, const bool isIntermediateSkylinePrinted);
+  SkyPatternTree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVector, const vector<unsigned int>& cliqueDimensions, const vector<double>& tauVector, const vector<unsigned int>& minSizes, const unsigned int minArea, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparator, const char* patternSizeSeparator, const char* sizeSeparator, const char* sizeAreaSeparator, const bool isSizePrinted, const bool isAreaPrinted, const bool isIntermediateSkylinePrinted);
 
   ~SkyPatternTree();
 
   SkyPatternTree& operator=(const SkyPatternTree&) = delete;
   SkyPatternTree& operator=(SkyPatternTree&&) = delete;
 
-  void initMeasures(const vector<unsigned int>& maxSizes, const int maxArea, const vector<unsigned int>& maximizedSizeDimensions, const vector<unsigned int>& minimizedSizeDimensions, const bool isAreaMaximized, const bool isAreaMinimized, const vector<string>& groupFileNames, vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, vector<unsigned int>& groupMaximizedSizes, const vector<unsigned int>& groupMinimizedSizes, const vector<vector<float>>& groupMaximizedRatios, const vector<vector<float>>& groupMaximizedPiatetskyShapiros, const vector<vector<float>>& groupMaximizedLeverages, const vector<vector<float>>& groupMaximizedForces, const vector<vector<float>>& groupMaximizedYulesQs, const vector<vector<float>>& groupMaximizedYulesYs);
-  void terminate();
+  void initMeasures(const vector<unsigned int>& maxSizes, const int maxArea, const vector<unsigned int>& maximizedSizeDimensions, const vector<unsigned int>& minimizedSizeDimensions, const bool isAreaMaximized, const bool isAreaMinimized, const vector<string>& groupFileNames, const vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, vector<unsigned int>& groupMaximizedSizes, const vector<unsigned int>& groupMinimizedSizes, const vector<vector<float>>& groupMaximizedRatios, const vector<vector<float>>& groupMaximizedPiatetskyShapiros, const vector<vector<float>>& groupMaximizedLeverages, const vector<vector<float>>& groupMaximizedForces, const vector<vector<float>>& groupMaximizedYulesQs, const vector<vector<float>>& groupMaximizedYulesYs, const char* utilityValueFileName, const float minUtility, const char* valueElementSeparator, const char* valueDimensionSeparator, const bool isUtilityMaximized, const char* slopePointFileName, const float minSlope, const char* pointElementSeparator, const char* pointDimensionSeparator, const bool isSlopeMaximized, const float densityThreshold);
 
  protected:
-  vector<Measure*> measuresToMinimize;
   vector<Measure*> measuresToMaximize;
-  vector<Measure*> minSizeMeasuresToMaximize;
 
+  static unsigned int nonMinSizeMeasuresIndex;
   static vector<IndistinctSkyPatterns*> skyPatterns;
   static unordered_set<IndistinctSkyPatterns*, skyPatternHasher, skyPatternEqual> minSizeSkyline;
 
+  static bool isSomeOptimizedMeasureNotMonotone;
   static bool isIntermediateSkylinePrinted;
 
-  SkyPatternTree(const SkyPatternTree& parent, const vector<Measure*>& mereConstraints, const vector<Measure*>& measuresToMinimize, const vector<Measure*>& measuresToMaximize, const vector<Measure*>& minSizeMeasuresToMaximize);
+  SkyPatternTree(const SkyPatternTree& parent, const vector<Measure*>& mereConstraints, const vector<Measure*>& measuresToMaximize);
 
-  void leftSubtree(const unsigned int presentAttributeId, const unsigned int originalValueId) const;
+  void terminate();
+
+  const bool leftSubtree(const Attribute& presentAttribute) const;
 
   const bool violationAfterAdding(const unsigned int dimensionIdOfElementsSetPresent, const vector<unsigned int>& elementsSetPresent);
   const bool violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent);
-  const bool dominated() const;
+  const bool dominated();
 #ifdef MIN_SIZE_ELEMENT_PRUNING
   vector<unsigned int> minSizeIrrelevancyThresholds() const;
 #endif
   void validPattern() const;
   void printNSets(const vector<vector<vector<unsigned int>>>& nSets, ostream& out) const;
 
-  static const bool dominated(const vector<Measure*>& measuresToMinimize, const vector<Measure*>& measuresToMaximize, const vector<Measure*>& minSizeMeasuresToMaximize);
+  static const bool dominated(const vector<Measure*>& measuresToMaximize);
 };
 
 #endif /*SKY_PATTERN_TREE_H_*/

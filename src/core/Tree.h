@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -10,10 +10,6 @@
 
 #ifndef TREE_H_
 #define TREE_H_
-
-#ifdef MIN_SIZE_ELEMENT_PRUNING
-#include <utility>
-#endif
 
 #include "../measures/MinSize.h"
 #include "../measures/MaxSize.h"
@@ -27,6 +23,8 @@
 #include "../measures/MinGroupCoverForce.h"
 #include "../measures/MinGroupCoverYulesQ.h"
 #include "../measures/MinGroupCoverYulesY.h"
+#include "../measures/MinUtility.h"
+#include "../measures/MinSlope.h"
 #include "SymmetricAttribute.h"
 #include "MetricAttribute.h"
 #include "Trie.h"
@@ -35,30 +33,33 @@
 #include "IndistinctSkyPatterns.h"
 #include "Node.h"
 
+#if defined TIME || defined DETAILED_TIME
+#include <chrono>
+
+using namespace std::chrono;
+#endif
+
 class Tree
 {
  public:
   Tree() = delete;
   Tree(const Tree&) = delete;
   Tree(Tree&&) = delete;
-  Tree(const char* dataFileName, const float densityThreshold, const vector<double>& epsilonVector, const vector<unsigned int>& cliqueDimensions, const vector<double>& tauVector, const vector<unsigned int>& minSizes, const unsigned int minArea, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparator, const char* patternSizeSeparator, const char* sizeSeparator, const char* sizeAreaSeparator, const bool isSizePrinted, const bool isAreaPrinted);
+  Tree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVector, const vector<unsigned int>& cliqueDimensions, const vector<double>& tauVector, const vector<unsigned int>& minSizes, const unsigned int minArea, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparator, const char* patternSizeSeparator, const char* sizeSeparator, const char* sizeAreaSeparator, const bool isSizePrinted, const bool isAreaPrinted);
 
   virtual ~Tree();
 
   Tree& operator=(const Tree&) = delete;
   Tree& operator=(Tree&&) = delete;
 
-  void initMeasures(const vector<unsigned int>& maxSizes, const int maxArea, const vector<string>& groupFileNames, vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator);
-  void peel();
-  virtual void terminate();
+  void initMeasures(const vector<unsigned int>& maxSizes, const int maxArea, const vector<string>& groupFileNames, const vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, const char* utilityValueFileName, const float minUtility, const char* valueElementSeparator, const char* valueDimensionSeparator, const char* slopePointFileName, const float minSlope, const char* pointElementSeparator, const char* pointDimensionSeparator, const float densityThreshold);
+  void mine();
 
  protected:
   vector<Attribute*> attributes;
   vector<Measure*> mereConstraints;
+  bool isEnumeratedElementPotentiallyPreventingClosedness;
 
-#ifdef VERBOSE_DIM_CHOICE
-  static vector<unsigned int> internal2ExternalAttributeOrder;
-#endif
   static vector<unsigned int> external2InternalAttributeOrder;
   static vector<unordered_map<string, unsigned int>> labels2Ids;
   static unsigned int firstSymmetricAttributeId;
@@ -84,6 +85,9 @@ class Tree
   static double parsingDuration;
   static double preProcessingDuration;
 #endif
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+  static double minSizeElementPruningDuration;
+#endif
   // CLEAN: All these static attributes should not be static for a detailed analysis of the enumeration
 #ifdef NB_OF_LEFT_NODES
   static unsigned int nbOfLeftNodes;
@@ -99,29 +103,29 @@ class Tree
   void printNode(ostream& out) const;
 #endif
 
-  virtual void leftSubtree(const unsigned int presentAttributeId, const unsigned int originalValueId) const;
-  void rightSubtree(const vector<Attribute*>::iterator absentAttributeIt, const vector<Value*>::iterator valueIt);
+  void peel();
+  virtual void terminate();
 
-  void setPresent(const unsigned int presentAttributeId, const unsigned int valueOriginalId);
-  const bool setAbsent(vector<IrrelevantValueIds>& irrelevantValueIdsVector);
+  virtual const bool leftSubtree(const Attribute& presentAttribute) const;
+  void rightSubtree(Attribute& absentAttribute, const bool isLastEnumeratedElementPotentiallyPreventingClosedness);
+
+  void setPresent(const unsigned int presentAttributeId);
+  const bool setAbsent();
 #ifdef MIN_SIZE_ELEMENT_PRUNING
-  const bool findMinSizeIrrelevantValuesAndCheckConstraints(vector<IrrelevantValueIds>& irrelevantValueIdsVector, const vector<Attribute*>::iterator previousAbsentAttributeIt);
+  const bool findMinSizeIrrelevantValuesAndCheckConstraints(const vector<Attribute*>::iterator previousAbsentAttributeIt);
   virtual vector<unsigned int> minSizeIrrelevancyThresholds() const;
 #endif
 
   virtual const bool violationAfterAdding(const unsigned int dimensionIdOfElementsSetPresent, const vector<unsigned int>& elementsSetPresent);
   virtual const bool violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent);
-  virtual const bool dominated() const;
+  virtual const bool dominated();
   virtual void validPattern() const;
 
   static void setMinParametersInClique(vector<unsigned int>& parameterVector);
   static void setMaxParametersInClique(vector<unsigned int>& parameterVector);
-  static vector<Measure*> childMeasures(const vector<Measure*>& parentMeasures, const unsigned int presentAttributeId, const unsigned int originalValueId);
+  static vector<Measure*> childMeasures(const vector<Measure*>& parentMeasures, const unsigned int presentAttributeId, const unsigned int presentValueId);
   static void deleteMeasures(vector<Measure*>& measures);
-
-#ifdef ASSERT
-  void assertValues(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const vector<Attribute*>::const_iterator attributeIt, const vector<Attribute*>::const_iterator attributeBegin, ostream& out) const;
-#endif
+  static const bool monotone(const Measure* measure);
 };
 
 #endif /*TREE_H_*/

@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -17,29 +17,35 @@
 class SymmetricAttribute: public Attribute
 {
  public:
-  SymmetricAttribute(const vector<unsigned int>& nbOfValuesPerAttribute, const double epsilon);
-  SymmetricAttribute(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd);
-
+  SymmetricAttribute();
+  SymmetricAttribute(const SymmetricAttribute& otherSymmetricAttribute) = delete;
+  SymmetricAttribute(Attribute&& otherSymmetricAttribute) = delete;
+  SymmetricAttribute(const vector<unsigned int>& nbOfValuesPerAttribute, const double epsilon, const vector<string>& labels);
+  
   SymmetricAttribute* clone(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd) const;
 
-  unordered_map<unsigned int, unsigned int> setLabels(unordered_map<string, unsigned int>& labels2Ids) const;
+  SymmetricAttribute& operator=(const SymmetricAttribute& otherSymmetricAttribute) = delete;
+  SymmetricAttribute& operator=(SymmetricAttribute&& otherSymmetricAttribute) = delete;
 
-  /* FIXME: adapt to new semantics (see Attribute) */
-  Value* moveValueFromPotentialToPresent(const unsigned int valueOriginalId);
-  Value* moveValueFromPotentialToAbsent(const vector<Value*>::iterator valueIt);
-  Value* moveSymmetricValueFromPotentialToPresent(const Value& symmetricValue);
-  void moveSymmetricValueFromPotentialToAbsent(const Value* value);
+  void setSymmetricAttribute(SymmetricAttribute* symmetricAttribute);
+  
+  void chooseValue();
+  void setChosenValuePresent();
+  void setChosenValueAbsent(const bool isValuePotentiallyPreventingClosedness);
 
-  pair<bool, vector<unsigned int>> findIrrelevantValuesAndCheckTauContiguity(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd, IrrelevantValueIds& irrelevantValueIds);
-  void presentAndPotentialCleanAbsent(const unsigned int presentAndPotentialIrrelevancyThreshold, const vector<Attribute*>::iterator attributeIt);
-  const bool closed(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const;
+  const bool findIrrelevantValuesAndCheckTauContiguity(const vector<Attribute*>::iterator attributeBegin, const vector<Attribute*>::iterator attributeEnd);
+  pair<bool, vector<unsigned int>> findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(const unsigned int presentAndPotentialIrrelevancyThreshold);
+  void presentAndPotentialCleanAbsent(const unsigned int presentAndPotentialIrrelevancyThreshold);
+  const bool unclosed(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const;
   void cleanAbsent(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd);
 
  protected:
-  static unsigned int firstSymmetricAttributeId;
+  SymmetricAttribute* symmetricAttribute;
 
-  const bool symmetricValuesDoNotExtendPresent(const Value& value, const Value& symmetricValue, const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const; /* must only be called on the second symmetric attribute */
-  const bool symmetricValuesDoNotExtendPresentAndPotential(const Value& value, const Value& symmetricValue, const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const; /* must only be called on the second symmetric attribute */
+  SymmetricAttribute(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd);
+
+  const bool symmetricValuesDoNotExtendPresent(const Value& value, const Value& symmetricValue, const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const; /* must only be called on the first symmetric attribute */
+  const bool symmetricValuesDoNotExtendPresentAndPotential(const Value& value, const Value& symmetricValue, const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const; /* must only be called on the first symmetric attribute */
 };
 
 #endif /*SYMMETRIC_ATTRIBUTE_H_*/

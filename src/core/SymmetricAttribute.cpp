@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -10,14 +10,15 @@
 
 #include "SymmetricAttribute.h"
 
-unsigned int SymmetricAttribute::firstSymmetricAttributeId;
-
-SymmetricAttribute::SymmetricAttribute(const vector<unsigned int>& nbOfValuesPerAttribute, const double epsilon): Attribute(nbOfValuesPerAttribute, epsilon)
+SymmetricAttribute::SymmetricAttribute(): Attribute(), symmetricAttribute(nullptr)
 {
-  firstSymmetricAttributeId = id - 1;
 }
 
-SymmetricAttribute::SymmetricAttribute(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd): Attribute(parentAttributeIt, parentAttributeEnd, sizeOfAttributeIt, sizeOfAttributeEnd)
+SymmetricAttribute::SymmetricAttribute(const vector<unsigned int>& nbOfValuesPerAttribute, const double epsilon, const vector<string>& labels): Attribute(nbOfValuesPerAttribute, epsilon, labels), symmetricAttribute(nullptr)
+{
+}
+
+SymmetricAttribute::SymmetricAttribute(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd): Attribute(parentAttributeIt, parentAttributeEnd, sizeOfAttributeIt, sizeOfAttributeEnd), symmetricAttribute(nullptr)
 {
 }
 
@@ -26,197 +27,236 @@ SymmetricAttribute* SymmetricAttribute::clone(const vector<Attribute*>::const_it
   return new SymmetricAttribute(parentAttributeIt, parentAttributeEnd, sizeOfAttributeIt, sizeOfAttributeEnd);
 }
 
-unordered_map<unsigned int, unsigned int> SymmetricAttribute::setLabels(unordered_map<string, unsigned int>& labels2Ids) const
+void SymmetricAttribute::setSymmetricAttribute(SymmetricAttribute* symmetricAttributeParam)
 {
-  const unordered_map<unsigned int, unsigned int> oldId2NewIds = Attribute::setLabels(labels2Ids);
-  while (labelsVector.size() <= id)
+  symmetricAttribute = symmetricAttributeParam;
+}
+
+void SymmetricAttribute::chooseValue()
+{
+  vector<Value*>::iterator valueIt = values.begin() + potentialIndex;
+  vector<Value*>::iterator bestValueIt = valueIt;
+  Value*& potentialFront = *valueIt;
+  vector<Value*>::iterator symmetricValueIt = symmetricAttribute->potentialBegin();
+  vector<Value*>::iterator bestSymmetricValueIt = symmetricValueIt;
+  Value*& symmetricPotentialFront = *symmetricValueIt;
+  unsigned int bestPresentNoise = potentialFront->getPresentNoise() + symmetricPotentialFront->getPresentNoise();
+  unsigned int bestPresentAndPotentialNoise = (*valueIt)->getPresentAndPotentialNoise() + (*symmetricValueIt)->getPresentAndPotentialNoise();
+  const vector<Value*>::iterator end = values.begin() + absentIndex;
+  if (isDensestValuePreferred)
     {
-      labelsVector.push_back(labelsVector.back());
-    }
-  return oldId2NewIds;
-}
-
-Value* SymmetricAttribute::moveValueFromPotentialToPresent(const unsigned int valueOriginalId)
-{
-  vector<Value*>::iterator valueIt = potential.begin();
-  for (; (*valueIt)->getOriginalId() != valueOriginalId; ++valueIt)
-    {
-    }
-  present.push_back(*valueIt);
-  potential.erase(valueIt);
-  return present.back();
-}
-
-Value* SymmetricAttribute::moveValueFromPotentialToAbsent(const vector<Value*>::iterator valueIt)
-{
-  absent.push_back(*valueIt);
-  potential.erase(valueIt);
-  return absent.back();
-}
-
-Value* SymmetricAttribute::moveSymmetricValueFromPotentialToPresent(const Value& symmetricValue)
-{
-  // symmetricValue has the same id, which is the index in potential too, as the value to move
-  vector<Value*>::iterator valueIt = potential.begin() + symmetricValue.getId();
-  present.push_back(*valueIt);
-  potential.erase(valueIt);
-  return present.back();
-}
-
-void SymmetricAttribute::moveSymmetricValueFromPotentialToAbsent(const Value* value)
-{
-  vector<Value*>::iterator symValueIt = lower_bound(potential.begin(), potential.end(), value, Value::smallerId);
-  Value* symValue = *symValueIt;
-  potential.erase(symValueIt);
-  absent.push_back(symValue);
-}
-
-pair<bool, vector<unsigned int>> SymmetricAttribute::findIrrelevantValuesAndCheckTauContiguity(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd, IrrelevantValueIds& irrelevantValueIds)
-{
-  const vector<Attribute*>::const_iterator symmetricAttributeBegin = attributeBegin + firstSymmetricAttributeId;
-  const vector<Attribute*>::const_iterator symmetricAttributeEnd = symmetricAttributeBegin + 2;
-  if (id == firstSymmetricAttributeId)
-    {
-      return Attribute::findIrrelevantValuesAndCheckTauContiguity(symmetricAttributeBegin, symmetricAttributeEnd, irrelevantValueIds);
-    }
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  vector<unsigned int> newIrrelevantValueOriginalIds;
-  newIrrelevantValueOriginalIds.reserve(potential.size());
-  vector<Value*>::const_iterator symmetricValueIt = (*symmetricAttributeBegin)->potentialBegin();
-  list<unsigned int>::iterator irrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.begin();
-  for (const Value* potentialValue : potential)
-    {
-      if (irrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.end() && *irrelevantValueIdIt == potentialValue->getId())
+      while (++valueIt != end)
 	{
-	  ++irrelevantValueIdIt;
-	}
-      else
-	{
-	  if (symmetricValuesDoNotExtendPresent(*potentialValue, **symmetricValueIt, attributeBegin, symmetricAttributeEnd))
+	  ++symmetricValueIt;
+	  const unsigned int presentNoise = (*valueIt)->getPresentNoise() + (*symmetricValueIt)->getPresentNoise();
+	  if (presentNoise < bestPresentNoise)
 	    {
-#ifdef DEBUG
-	      cout << labelsVector[id][potentialValue->getOriginalId()] << " in attributes " << internal2ExternalAttributeOrder[id - 1] << " and " << internal2ExternalAttributeOrder[id] << " will never be present nor prevent the closedness of any future pattern" << endl;
-#endif
-	      irrelevantValueIds.irrelevantValueIds.insert(irrelevantValueIdIt, potentialValue->getId());
-	      newIrrelevantValueOriginalIds.push_back(potentialValue->getOriginalId());
+	      bestPresentNoise = presentNoise;
+	      bestPresentAndPotentialNoise = (*valueIt)->getPresentAndPotentialNoise() + (*symmetricValueIt)->getPresentAndPotentialNoise();
+	      bestValueIt = valueIt;
+	      bestSymmetricValueIt = symmetricValueIt;
+	    }
+	  else
+	    {
+	      if (presentNoise == bestPresentNoise)
+		{
+		  const unsigned int presentAndPotentialNoise = (*valueIt)->getPresentAndPotentialNoise() + (*symmetricValueIt)->getPresentAndPotentialNoise();
+		  if (presentAndPotentialNoise < bestPresentAndPotentialNoise)
+		    {
+		      bestPresentAndPotentialNoise = presentAndPotentialNoise;
+		      bestValueIt = valueIt;
+		      bestSymmetricValueIt = symmetricValueIt;
+		    }
+		}
 	    }
 	}
-      ++symmetricValueIt;
-    }
-#ifdef DETAILED_TIME
-  propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-  return pair<bool, vector<unsigned int>>(false, newIrrelevantValueOriginalIds);
-}
-
-#ifdef MIN_SIZE_ELEMENT_PRUNING
-void SymmetricAttribute::presentAndPotentialCleanAbsent(const unsigned int presentAndPotentialIrrelevancyThreshold, const vector<Attribute*>::iterator attributeIt)
-{
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  Attribute* symmetricAttribute;
-  if (id == firstSymmetricAttributeId)
-    {
-      symmetricAttribute = *(attributeIt + 1);
     }
   else
     {
-      symmetricAttribute = *(attributeIt - 1);
-    }
-  vector<Value*>::iterator symmetricValueIt = symmetricAttribute->absentBegin();
-  for (vector<Value*>::iterator absentValueIt = absent.begin(); absentValueIt != absent.end(); )
-    {
-      if ((*absentValueIt)->getPresentAndPotentialNoise() > presentAndPotentialIrrelevancyThreshold)
+      while (++valueIt != end)
 	{
-	  symmetricAttribute->absentValueToCleanFound(symmetricValueIt);
-	  absentValueToCleanFound(absentValueIt);
+	  ++symmetricValueIt;
+	  const unsigned int presentNoise = (*valueIt)->getPresentNoise() + (*symmetricValueIt)->getPresentNoise();
+	  if (presentNoise > bestPresentNoise)
+	    {
+	      bestPresentNoise = presentNoise;
+	      bestPresentAndPotentialNoise = (*valueIt)->getPresentAndPotentialNoise() + (*symmetricValueIt)->getPresentAndPotentialNoise();
+	      bestValueIt = valueIt;
+	      bestSymmetricValueIt = symmetricValueIt;
+	    }
+	  else
+	    {
+	      if (presentNoise == bestPresentNoise)
+		{
+		  const unsigned int presentAndPotentialNoise = (*valueIt)->getPresentAndPotentialNoise() + (*symmetricValueIt)->getPresentAndPotentialNoise();
+		  if (presentAndPotentialNoise > bestPresentAndPotentialNoise)
+		    {
+		      bestPresentAndPotentialNoise = presentAndPotentialNoise;
+		      bestValueIt = valueIt;
+		      bestSymmetricValueIt = symmetricValueIt;
+		    }
+		}
+	    }
+	}
+    }
+  swap(*bestValueIt, potentialFront);
+  swap(*bestSymmetricValueIt, symmetricPotentialFront);
+}
+
+void SymmetricAttribute::setChosenValuePresent()
+{
+  Attribute::setChosenValuePresent();
+  if (id < symmetricAttribute->id)
+    {
+      symmetricAttribute->setChosenValuePresent();
+    }
+}
+
+void SymmetricAttribute::setChosenValueAbsent(const bool isValuePotentiallyPreventingClosedness)
+{
+  Attribute::setChosenValueAbsent(isValuePotentiallyPreventingClosedness);
+  if (id < symmetricAttribute->id)
+    {
+      symmetricAttribute->setChosenValueAbsent(isValuePotentiallyPreventingClosedness);
+    }
+}
+
+const bool SymmetricAttribute::findIrrelevantValuesAndCheckTauContiguity(const vector<Attribute*>::iterator attributeBegin, const vector<Attribute*>::iterator attributeEnd)
+{
+  if (id < symmetricAttribute->id)
+    {
+      vector<Value*>::iterator symmetricPotentialValueIt = symmetricAttribute->potentialBegin();
+      vector<Value*>::iterator potentialEnd = values.begin() + irrelevantIndex;
+      for (vector<Value*>::iterator potentialValueIt = values.begin() + potentialIndex; potentialValueIt != potentialEnd; )
+	{
+	  if (symmetricValuesDoNotExtendPresent(**potentialValueIt, **symmetricPotentialValueIt, attributeBegin, attributeEnd))
+	    {
+#ifdef DEBUG
+	      cout << labelsVector[id][(*potentialValueIt)->getDataId()] << " in attributes " << internal2ExternalAttributeOrder[id] << " and " << internal2ExternalAttributeOrder[id + 1] << " will never be present nor prevent the closedness of any future pattern" << endl;
+#endif
+	      swap(*potentialValueIt, *--potentialEnd);
+	      --irrelevantIndex;
+	      symmetricAttribute->setPotentialValueIrrelevant(symmetricPotentialValueIt);
+	    }
+	  else
+	    {
+	      ++potentialValueIt;
+	      ++symmetricPotentialValueIt;
+	    }
+	}
+    }
+  return false;
+}
+
+#ifdef MIN_SIZE_ELEMENT_PRUNING
+pair<bool, vector<unsigned int>> SymmetricAttribute::findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(const unsigned int presentAndPotentialIrrelevancyThreshold)
+{
+  vector<unsigned int> newIrrelevantValueDataIds;
+  vector<Value*>::iterator symmetricPotentialValueIt = symmetricAttribute->potentialBegin();
+  vector<Value*>::iterator potentialEnd = values.begin() + irrelevantIndex;
+  for (vector<Value*>::iterator potentialValueIt = values.begin() + potentialIndex; potentialValueIt != potentialEnd; )
+    {
+      // **potentialValueIt is irrelevant if it contains too much noise in any extension satisfying the minimal size constraints
+      if (presentAndPotentialIrrelevantValue(**potentialValueIt, presentAndPotentialIrrelevancyThreshold))
+	{
+	  newIrrelevantValueDataIds.push_back((*potentialValueIt)->getDataId());
+	  swap(*potentialValueIt, *--potentialEnd);
+	  --irrelevantIndex;
+	  symmetricAttribute->setPotentialValueIrrelevant(symmetricPotentialValueIt);
 	}
       else
 	{
-	  ++symmetricValueIt;
-	  ++absentValueIt;
+	  ++potentialValueIt;
+	  ++symmetricPotentialValueIt;
 	}
     }
-#ifdef DETAILED_TIME
-  propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
+  return pair<bool, vector<unsigned int>>(false, newIrrelevantValueDataIds);
+}
+
+void SymmetricAttribute::presentAndPotentialCleanAbsent(const unsigned int presentAndPotentialIrrelevancyThreshold)
+{
+  vector<Value*>::iterator symmetricAbsentValueIt = symmetricAttribute->absentBegin();
+  for (vector<Value*>::iterator absentValueIt = values.begin() + absentIndex; absentValueIt != values.end(); )
+    {
+      if ((*absentValueIt)->getPresentAndPotentialNoise() > presentAndPotentialIrrelevancyThreshold)
+	{
+	  removeAbsentValue(absentValueIt);
+	  symmetricAttribute->removeAbsentValue(symmetricAbsentValueIt);
+	}
+      else
+	{
+	  ++absentValueIt;
+	  ++symmetricAbsentValueIt;
+	}
+    }
 }
 #endif
 
 const bool SymmetricAttribute::symmetricValuesDoNotExtendPresent(const Value& value, const Value& symmetricValue, const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const
 {
-  const vector<unsigned int>::const_iterator symmetricEpsilonIt = epsilonVector.begin() + id - 1;
-  if (value.getPresentNoise() > *symmetricEpsilonIt)
+  const vector<unsigned int>::const_iterator thisEpsilonIt = epsilonVector.begin() + id;
+  if (value.getPresentNoise() > *thisEpsilonIt || symmetricValue.getPresentNoise() > *(thisEpsilonIt + 1))
     {
       return true;
     }
   vector<Attribute*>::const_iterator attributeIt = attributeBegin;
   vector<unsigned int>::const_iterator epsilonIt = epsilonVector.begin();
-  for (unsigned int intersectionIndex = id; epsilonIt != symmetricEpsilonIt && value.symmetricValuesExtendPastPresent((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *epsilonIt, --intersectionIndex); ++epsilonIt)
+  for (unsigned int intersectionIndex = id; epsilonIt != thisEpsilonIt && value.symmetricValuesExtendPastPresent((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *epsilonIt, --intersectionIndex); ++epsilonIt)
     {
       ++attributeIt;
     }
-  if (!(epsilonIt == symmetricEpsilonIt && value.extendsPastPresent((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *(++epsilonIt), 0)))
+  unsigned int reverseAttributeIndex = maxId - id - 1;
+  if (!(epsilonIt == thisEpsilonIt && symmetricValue.extendsPastPresent(values.begin(), values.begin() + potentialIndex, *epsilonIt, 0) && value.extendsFuturePresent(symmetricAttribute->presentBegin(), symmetricAttribute->presentEnd(), *++epsilonIt, reverseAttributeIndex)))
     {
       return true;
     }
-  ++attributeIt;
-  for (unsigned int reverseAttributeIndex = maxId - id; ++attributeIt != attributeEnd && value.symmetricValuesExtendFuturePresent(symmetricValue, (*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *(++epsilonIt), --reverseAttributeIndex); )
+  for (attributeIt += 2; attributeIt != attributeEnd && value.symmetricValuesExtendFuturePresent(symmetricValue, (*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *++epsilonIt, reverseAttributeIndex--); ++attributeIt)
     {
     }
   return attributeIt != attributeEnd;
 }
 
-const bool SymmetricAttribute::closed(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const
+const bool SymmetricAttribute::unclosed(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const
 {
-  if (id == firstSymmetricAttributeId)
+  if (id > symmetricAttribute->id)
     {
-      return true;
+      return false;
     }
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  const vector<Attribute*>::const_iterator symmetricAttributeBegin = attributeBegin + firstSymmetricAttributeId;
-  const vector<Attribute*>::const_iterator symmetricAttributeEnd = symmetricAttributeBegin + 2;
-  vector<Value*>::const_iterator valueIt = absent.begin();
-  for (vector<Value*>::const_iterator symmetricValueIt = (*symmetricAttributeBegin)->absentBegin(); valueIt != absent.end() && ((*symmetricAttributeBegin)->valueDoesNotExtendPresentAndPotential(**symmetricValueIt, symmetricAttributeBegin, symmetricAttributeEnd) || symmetricValuesDoNotExtendPresentAndPotential(**valueIt, **symmetricValueIt, attributeBegin, attributeEnd)); ++valueIt)
+  vector<Value*>::const_iterator symmetricAbsentValueIt = symmetricAttribute->absentBegin();
+  vector<Value*>::const_iterator absentEnd = values.end();
+  vector<Value*>::const_iterator absentValueIt = values.begin() + absentIndex;
+  for (; absentValueIt != absentEnd && symmetricValuesDoNotExtendPresentAndPotential(**absentValueIt, **symmetricAbsentValueIt, attributeBegin, attributeEnd); ++absentValueIt)
     {
-      ++symmetricValueIt;
+      ++symmetricAbsentValueIt;
     }
-#ifdef DETAILED_TIME
-  closednessCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
 #ifdef DEBUG
-  if (valueIt != absent.end())
+  if (absentValueIt != absentEnd)
     {
-      cout << labelsVector[id][(*valueIt)->getOriginalId()] << " in attributes " << internal2ExternalAttributeOrder[id - 1] << " and " << internal2ExternalAttributeOrder[id] << " extend the pattern -> Prune!" << endl;
+      cout << labelsVector[id][(*absentValueIt)->getDataId()] << " in attributes " << internal2ExternalAttributeOrder[id] << " and " << internal2ExternalAttributeOrder[id + 1] << " extend the pattern -> Prune!" << endl;
     }
 #endif
-  return valueIt == absent.end();
+  return absentValueIt != absentEnd;
 }
 
 const bool SymmetricAttribute::symmetricValuesDoNotExtendPresentAndPotential(const Value& value, const Value& symmetricValue, const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const
 {
-  const vector<unsigned int>::const_iterator symmetricEpsilonIt = epsilonVector.begin() + id - 1;
-  if (value.getPresentAndPotentialNoise() > *symmetricEpsilonIt)
+  const vector<unsigned int>::const_iterator thisEpsilonIt = epsilonVector.begin() + id;
+  if (value.getPresentAndPotentialNoise() > *thisEpsilonIt || symmetricValue.getPresentAndPotentialNoise() > (*thisEpsilonIt + 1))
     {
       return true;
     }
   vector<Attribute*>::const_iterator attributeIt = attributeBegin;
   vector<unsigned int>::const_iterator epsilonIt = epsilonVector.begin();
-  for (unsigned int intersectionIndex = id; epsilonIt != symmetricEpsilonIt && value.symmetricValuesExtendPastPresentAndPotential((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *epsilonIt, --intersectionIndex) && value.symmetricValuesExtendPastPresentAndPotential((*attributeIt)->potentialBegin(), (*attributeIt)->potentialEnd(), *epsilonIt, intersectionIndex); ++epsilonIt)
+  for (unsigned int intersectionIndex = id; epsilonIt != thisEpsilonIt && value.symmetricValuesExtendPastPresentAndPotential((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *epsilonIt, --intersectionIndex); ++epsilonIt)
     {
       ++attributeIt;
     }
-  if (!(epsilonIt == symmetricEpsilonIt && value.extendsPastPresentAndPotential((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *(++epsilonIt), 0)))
+  unsigned int reverseAttributeIndex = maxId - id - 1;
+  if (!(epsilonIt == thisEpsilonIt && symmetricValue.extendsPastPresentAndPotential(values.begin(), values.begin() + potentialIndex, *epsilonIt, 0) && value.extendsFuturePresentAndPotential(symmetricAttribute->presentBegin(), symmetricAttribute->presentEnd(), *++epsilonIt, reverseAttributeIndex)))
     {
       return true;
     }
-  ++attributeIt;
-  for (unsigned int reverseAttributeIndex = maxId - id; ++attributeIt != attributeEnd && value.symmetricValuesExtendFuturePresentAndPotential(symmetricValue, (*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *(++epsilonIt), --reverseAttributeIndex) && value.symmetricValuesExtendFuturePresentAndPotential(symmetricValue, (*attributeIt)->potentialBegin(), (*attributeIt)->potentialEnd(), *epsilonIt, reverseAttributeIndex); )
+  for (attributeIt += 2; attributeIt != attributeEnd && value.symmetricValuesExtendFuturePresentAndPotential(symmetricValue, (*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), *++epsilonIt, reverseAttributeIndex--); ++attributeIt)
     {
     }
   return attributeIt != attributeEnd;
@@ -224,48 +264,21 @@ const bool SymmetricAttribute::symmetricValuesDoNotExtendPresentAndPotential(con
 
 void SymmetricAttribute::cleanAbsent(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd)
 {
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  const vector<Attribute*>::const_iterator symmetricAttributeBegin = attributeBegin + firstSymmetricAttributeId;
-  const vector<Attribute*>::const_iterator symmetricAttributeEnd = symmetricAttributeBegin + 2;
-  if (id == firstSymmetricAttributeId)
+  if (id < symmetricAttribute->id)
     {
-      Attribute& symmetricAttribute = **(symmetricAttributeBegin + 1);
-      vector<Value*>::iterator symmetricValueIt = symmetricAttribute.absentBegin();
-      for (vector<Value*>::iterator absentIt = absent.begin(); absentIt != absent.end(); )
+      vector<Value*>::iterator symmetricAbsentValueIt = symmetricAttribute->absentBegin();
+      for (vector<Value*>::iterator absentValueIt = values.begin() + absentIndex; absentValueIt != values.end(); )
 	{
-	  if (valueDoesNotExtendPresent(**absentIt, symmetricAttributeBegin, symmetricAttributeEnd))
+	  if (symmetricValuesDoNotExtendPresent(**absentValueIt, **symmetricAbsentValueIt, attributeBegin, attributeEnd))
 	    {
-	      symmetricAttribute.absentValueToCleanFound(symmetricValueIt);
-	      absentValueToCleanFound(absentIt);
+	      removeAbsentValue(absentValueIt);
+	      symmetricAttribute->removeAbsentValue(symmetricAbsentValueIt);
 	    }
 	  else
 	    {
-	      ++symmetricValueIt;
-	      ++absentIt;
+	      ++absentValueIt;
+	      ++symmetricAbsentValueIt;
 	    }
 	}
-#ifdef DETAILED_TIME
-      absentCleaningDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-      return;
     }
-  vector<Value*>::iterator symmetricValueIt = (*symmetricAttributeBegin)->absentBegin();
-  for (vector<Value*>::iterator absentIt = absent.begin(); absentIt != absent.end(); )
-    {
-      if (symmetricValuesDoNotExtendPresent(**absentIt, **symmetricValueIt, attributeBegin, attributeEnd))
-	{
-	  (*symmetricAttributeBegin)->absentValueToCleanFound(symmetricValueIt);
-	  absentValueToCleanFound(absentIt);
-	}
-      else
-	{
-	  ++symmetricValueIt;
-	  ++absentIt;
-	}
-    }
-#ifdef DETAILED_TIME
-  absentCleaningDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
 }

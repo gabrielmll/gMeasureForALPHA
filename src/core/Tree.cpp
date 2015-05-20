@@ -23,6 +23,9 @@ steady_clock::time_point Tree::startingPoint;
 double Tree::parsingDuration;
 double Tree::preProcessingDuration;
 #endif
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+double Tree::minSizeElementPruningDuration = 0;
+#endif
 #ifdef NB_OF_LEFT_NODES
 unsigned int Tree::nbOfLeftNodes = 0;
 #endif
@@ -47,22 +50,23 @@ string Tree::sizeAreaSeparator;
 bool Tree::isSizePrinted;
 bool Tree::isAreaPrinted;
 
-Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam) : attributes(), mereConstraints()
+Tree::Tree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam) : attributes(), mereConstraints(), isEnumeratedElementPotentiallyPreventingClosedness(false)
 {
 #ifdef TIME
   overallBeginning = steady_clock::now();
 #endif
   vector<unsigned int> numDimensionIds;
+  const vector<unsigned int>::const_iterator cliqueDimensionEnd = cliqueDimensionsParam.end();
   vector<unsigned int>::const_iterator cliqueDimensionIt = cliqueDimensionsParam.begin();
   unsigned int dimensionId = 0;
   for (const double tau : tauVectorParam)
     {
       if (tau != 0)
 	{
-	  for (; cliqueDimensionIt != cliqueDimensionsParam.end() && *cliqueDimensionIt < dimensionId; ++cliqueDimensionIt)
+	  for (; cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt < dimensionId; ++cliqueDimensionIt)
 	    {
 	    }
-	  if (cliqueDimensionIt != cliqueDimensionsParam.end() && *cliqueDimensionIt == dimensionId)
+	  if (cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt == dimensionId)
 	    {
 	      throw UsageException(("clique and tau options indicate that attribute " + lexical_cast<string>(*cliqueDimensionIt) + " is both symmetric and almost-contiguous. This is not supported yet. Would you implement that feature?").c_str());
 	    }
@@ -88,22 +92,57 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
     {
       throw UsageException(("epsilon option should provide at most " + lexical_cast<string>(n) + " coefficients!").c_str());
     }
-  double minMembership = 1;
-  if (epsilonVectorParam.size() == n)
+  isAgglomeration = maximalNbOfClosedNSetsForAgglomeration != 0;
+  if (isAgglomeration)
     {
-      minMembership -= *min_element(epsilonVectorParam.begin(), epsilonVectorParam.end());
+      Node::setMaximalNbOfClosedNSetsForAgglomeration(maximalNbOfClosedNSetsForAgglomeration);
     }
-  if (minMembership > 1. / numeric_limits<unsigned int>::max())
+  else
     {
-      noisyTupleFileReader.setMinMembership(minMembership);
-      if (minMembership > noisyTuple.second)
-      	{
-	  noisyTupleFileReader.startOverFromNextLine();
-      	  noisyTuple = noisyTupleFileReader.next();
-      	}
+      double minMembership = 1;
+      if (epsilonVectorParam.size() == n)
+	{
+	  minMembership -= *min_element(epsilonVectorParam.begin(), epsilonVectorParam.end());
+	}
+      if (minMembership > 1. / numeric_limits<unsigned int>::max())
+	{
+	  noisyTupleFileReader.setMinMembership(minMembership);
+	  if (minMembership > noisyTuple.second)
+	    {
+	      noisyTupleFileReader.startOverFromNextLine();
+	      noisyTuple = noisyTupleFileReader.next();
+	    }
+	}
+    }
+  // Initialize minSizeVector and find out whether the pre-process is wanted/useful
+  bool isToBePreProcessed = true;
+  minArea = minAreaParam;
+  vector<unsigned int> minSizeVector = minSizesParam;
+  if (minArea == 0)
+    {
+      if (minSizeVector.size() != n)
+	{
+	  isToBePreProcessed = false;
+	  minSizeVector.resize(n);
+	}
+      else
+	{
+	  for (const unsigned int minSize : minSizeVector)
+	    {
+	      if (minSize == 0)
+		{
+		  isToBePreProcessed = false;
+		  break;
+		}
+	    }
+	}
+    }
+  else
+    {
+      minSizeVector.resize(n, 1);
     }
   // Parse
-  // TODO: Less memory-consuming parsing for dense datasets (one copy of the data and no pre-process)
+  // TODO: one copy of the data if isToBePreProcessed is false (and add an option to disable the pre-process)
   vector<vector<NoisyTuples*>> hyperplanes(n);
   bool isCrisp = true;
   for (; noisyTuple.second != 0; noisyTuple = noisyTupleFileReader.next())
@@ -116,7 +155,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
       vector<unsigned int>::const_iterator elementIt = noisyTuple.first.begin();
       for (vector<vector<NoisyTuples*>>::iterator hyperplanesInDimensionIt = hyperplanes.begin(); ; ++hyperplanesInDimensionIt)
 	{
-	  if (cliqueDimensionIt != cliqueDimensionsParam.end() && *cliqueDimensionIt == dimensionId++)
+	  if (cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt == dimensionId++)
 	    {
 	      ++cliqueDimensionIt;
 	      while (*elementIt >= hyperplanesInDimensionIt->size())
@@ -146,7 +185,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
   vector<vector<NoisyTuples*>>::iterator hyperplanesInDimensionIt = hyperplanes.begin();
   for (const unsigned int cardinality : cardinalities)
     {
-      while (cardinality != hyperplanesInDimensionIt->size())
+      while (hyperplanesInDimensionIt->size() != cardinality)
 	{
 	  hyperplanesInDimensionIt->push_back(new NoisyTuples());
 	}
@@ -156,18 +195,23 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
   parsingDuration = duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
   startingPoint = steady_clock::now();
 #endif
-  // Initialize epsilonVector, minSizeVector, minimalNbOfNonSelfLoopTuples and maximalNbOfNonSelfLoopTuples and cardinalities considering the input data order of the attributes
+  // Initialize epsilonVector, minimalNbOfNonSelfLoopTuples and maximalNbOfNonSelfLoopTuples and cardinalities considering the input data order of the attributes
   vector<double> epsilonVector = epsilonVectorParam;
   epsilonVector.resize(n);
-  minArea = static_cast<double>(minAreaParam);
-  vector<unsigned int> minSizeVector = minSizesParam;
-  if (minArea == 0)
+  // If the data is crisp, reset the epsilons to values with .5 as the decimal part
+  if (isCrisp)
     {
-      minSizeVector.resize(n);
-    }
-  else
-    {
-      minSizeVector.resize(n, 1);
+      const vector<double>::iterator epsilonEnd = epsilonVector.end();
+      vector<double>::iterator epsilonIt = epsilonVector.begin();
+      for (; epsilonIt != epsilonEnd && *epsilonIt >= 1; ++epsilonIt)
+	{
+	  *epsilonIt = floor(*epsilonIt) + .5;
+	}
+      if (epsilonIt != epsilonEnd)
+	{
+	  cerr << "Warning: crisp relation (d-peeler applicable and probably faster)" << endl;
+	  epsilonVector = vector<double>(n, .5);
+	}
     }
   vector<unsigned int> minimalNbOfNonSelfLoopTuples;
   minimalNbOfNonSelfLoopTuples.reserve(n);
@@ -192,7 +236,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
       vector<unsigned int>::const_iterator cliqueDimensionIt = cliqueDimensionsParam.begin();
       for (const unsigned int cardinality : cardinalities)
 	{
-	  if (cliqueDimensionIt != cliqueDimensionsParam.end() && *cliqueDimensionIt == dimensionId++)
+	  if (cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt == dimensionId++)
 	    {
 	      ++cliqueDimensionIt;
 	    }
@@ -208,7 +252,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
       cliqueDimensionIt = cliqueDimensionsParam.begin();
       for (const unsigned int minSize : minSizeVector)
 	{
-	  if (cliqueDimensionIt != cliqueDimensionsParam.end() && *cliqueDimensionIt == dimensionId++)
+	  if (cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt == dimensionId++)
 	    {
 	      ++cliqueDimensionIt;
 	      if (minSize > minNbOfSymmetricElements)
@@ -233,7 +277,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
       cliqueDimensionIt = cliqueDimensionsParam.begin();
       for (dimensionId = 0; dimensionId != n; ++dimensionId)
 	{
-	  if (cliqueDimensionIt != cliqueDimensionsParam.end() && *cliqueDimensionIt == dimensionId)
+	  if (cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt == dimensionId)
 	    {
 	      ++cliqueDimensionIt;
 	      nbOfNonSelfLoopTuples.push_back(nbOfNonSelfLoopTuplesInSymmetricHyperplane);
@@ -247,8 +291,34 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
 	    }
 	}
     }
-  // Pre-process
-  vector<Dimension*> dimensions = NoisyTuples::preProcess(nbOfNonSelfLoopTuples, minimalNbOfNonSelfLoopTuples, epsilonVector, cliqueDimensionsParam, hyperplanes);
+  vector<Dimension*> dimensions;
+#ifndef PRE_PROCESS
+  isToBePreProcessed = false;
+#endif
+  if (isToBePreProcessed)
+    {
+      // Pre-process
+      // PERF: if isAgglomeration, ignore the tuples with noise above min(epsilon); they were inserted so that they are considered when agglomerating but cannot be in a closed n-set
+      dimensions = NoisyTuples::preProcess(nbOfNonSelfLoopTuples, minimalNbOfNonSelfLoopTuples, epsilonVector, cliqueDimensionsParam, hyperplanes);
+    }
+  else
+    {
+      dimensions.reserve(n);
+      dimensionId = 0;
+      vector<unsigned int>::const_iterator cliqueDimensionIt = cliqueDimensionsParam.begin();
+      for (const unsigned int cardinality : cardinalities)
+	{
+	  if (cliqueDimensionIt != cliqueDimensionEnd && *cliqueDimensionIt == dimensionId)
+	    {
+	      ++cliqueDimensionIt;
+	      dimensions.push_back(new Dimension(dimensionId++, cardinality, true));
+	    }
+	  else
+	    {
+	      dimensions.push_back(new Dimension(dimensionId++, cardinality, false));
+	    }
+	}
+    }
 #ifdef DETAILED_TIME
   preProcessingDuration = duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
 #endif
@@ -312,14 +382,12 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
 	{
 	  delete dimension;
 	}
+#ifdef OUTPUT
+      outputFile << endl;
+#endif
       return;
     }
   // Init some static variables
-  isAgglomeration = maximalNbOfClosedNSetsForAgglomeration != 0;
-  if (isAgglomeration)
-    {
-      Node::setMaximalNbOfClosedNSetsForAgglomeration(maximalNbOfClosedNSetsForAgglomeration);
-    }
   outputDimensionSeparator = outputDimensionSeparatorParam;
   patternSizeSeparator = patternSizeSeparatorParam;
   sizeSeparator = sizeSeparatorParam;
@@ -330,9 +398,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
   sort(dimensions.begin(), dimensions.end(), smallerDimension);
   external2InternalAttributeOrder.resize(n);
   unsigned int attributeId = 0;
-#ifndef VERBOSE_DIM_CHOICE
   vector<unsigned int> internal2ExternalAttributeOrder;
-#endif
   internal2ExternalAttributeOrder.reserve(n);
   for (const Dimension* dimension : dimensions)
     {
@@ -361,102 +427,115 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
 	  lastSymmetricAttributeId = symmetricAttributeId;
 	}
     }
-  // If the data is crisp, reset the epsilons to values with .5 as the decimal part
-  if (isCrisp)
-    {
-      vector<double>::iterator epsilonIt = epsilonVector.begin();
-      for (; epsilonIt != epsilonVector.end() && *epsilonIt >= 1; ++epsilonIt)
-	{
-	  *epsilonIt = floor(*epsilonIt) + .5;
-	}
-      if (epsilonIt != epsilonVector.end())
-	{
-	  cerr << "Warning: exact closed n-sets searched (d-peeler applicable and probably faster)" << endl;
-	  epsilonVector = vector<double>(n, .5);
-	}
-    }
 #ifdef MIN_SIZE_ELEMENT_PRUNING
   // Initialize parameters to compute presentAndPotentialIrrelevancyThresholds given the sky-patterns
   IndistinctSkyPatterns::setParametersToComputePresentAndPotentialIrrelevancyThresholds(firstSymmetricAttributeId, lastSymmetricAttributeId);
 #endif
-  // Initialize minSizes and cardinalities according to the new attribute order, delete dimensions; compute the noise per unit (noise is stored in unsigned integers whose maximal value, the number of tuples in the hyperplane of the smallest dimension, is assigned to numeric_limits<unsigned int>::max())
-  minSizes.reserve(n);
+  // Initialize cardinalities and oldIds2NewIds according to the new attribute order, delete the elements in dimensions and the hyperplanes not in the first internal dimension, compute the noise per unit (noise is stored in unsigned integers whose maximal value, the number of tuples in the hyperplane of the smallest dimension, is assigned to numeric_limits<unsigned int>::max())
   vector<unsigned int>::iterator cardinalityIt = cardinalities.begin();
   unsigned int largestNoise = 1;
+  vector<vector<unsigned int>> oldIds2NewIds;
+  oldIds2NewIds.reserve(n);
+  vector<unsigned int>::const_iterator externalAttributeIdIt = internal2ExternalAttributeOrder.begin();
   vector<Dimension*>::const_iterator dimensionIt = dimensions.begin();
-  for (vector<unsigned int>::const_iterator attributeIdIt = internal2ExternalAttributeOrder.begin(); attributeIdIt != internal2ExternalAttributeOrder.end(); ++attributeIdIt)
+  for (dimensionId = 0; dimensionId != n; ++dimensionId)
     {
       const unsigned int cardinality = (*dimensionIt)->getCardinality();
       delete *dimensionIt++;
-      if (attributeIdIt != internal2ExternalAttributeOrder.begin())
+      if (dimensionId >= firstSymmetricAttributeId && dimensionId <= lastSymmetricAttributeId)
 	{
-	  largestNoise *= cardinality;
-	}
-      *cardinalityIt++ = cardinality;
-      minSizes.push_back(minSizeVector[*attributeIdIt]);
-    }
-  Attribute::noisePerUnit = numeric_limits<unsigned int>::max() / largestNoise;
-  // Initialize labels2Ids
-  if (lastSymmetricAttributeId == 0)
-    {
-      labels2Ids = noisyTupleFileReader.captureLabels2Ids();
-    }
-  else
-    {
-      labels2Ids = noisyTupleFileReader.captureLabels2Ids(internal2ExternalAttributeOrder[firstSymmetricAttributeId]);
-    }
-  // Initialize attributes, populate oldIds2NewIds and set the new ids in labels2Ids
-  vector<unordered_map<unsigned int, unsigned int>> oldIds2NewIds;
-  oldIds2NewIds.reserve(n);
-  vector<unsigned int>::const_iterator attributeIdIt = internal2ExternalAttributeOrder.begin();
-  attributes.reserve(n);
-  for (dimensionId = 0; dimensionId != n; ++dimensionId)
-    {
-      unsigned int hyperplaneId = 0;
-      unordered_map<string, unsigned int>& labels2IdsInDimension = labels2Ids[*attributeIdIt];
-      vector<NoisyTuples*>& hyperplanesInDimension = hyperplanes[*attributeIdIt];
-      for (NoisyTuples* hyperplane : hyperplanesInDimension)
-	{
-	  const string label = noisyTupleFileReader.captureLabel(*attributeIdIt, hyperplaneId);
-	  if (hyperplane->empty())
+	  if (dimensionId == firstSymmetricAttributeId)
 	    {
-	      labels2IdsInDimension[label] = numeric_limits<unsigned int>::max();
+	      oldIds2NewIds.insert(oldIds2NewIds.end(), cliqueDimensionsParam.size(), NoisyTuples::createNewIds(cliqueDimensionsParam, hyperplanes, cardinality));
 	    }
-	  if (attributeIdIt != internal2ExternalAttributeOrder.begin())
-	    {
-	      delete hyperplane;
-	    }
-	  ++hyperplaneId;
-	}
-      if (dimensionId == firstSymmetricAttributeId)
-	{
-	  for (; dimensionId <= lastSymmetricAttributeId; ++dimensionId)
-	    {
-	      attributes.push_back(new SymmetricAttribute(cardinalities, epsilonVector[*attributeIdIt]));
-	    }
-	  oldIds2NewIds.insert(oldIds2NewIds.end(), cliqueDimensionsParam.size(), attributes.back()->setLabels(labels2IdsInDimension));
-	  for (dimensionId = firstSymmetricAttributeId; dimensionId != lastSymmetricAttributeId; ++dimensionId)
-	    {
-	      for (NoisyTuples* hyperplane : hyperplanes[*++attributeIdIt])
-		{
-		  delete hyperplane;
-		}
-	      labels2Ids[*attributeIdIt] = labels2IdsInDimension;
-	    }
-	}
+	}	      
       else
 	{
-	  if (*attributeIdIt < tauVectorParam.size() && tauVectorParam[*attributeIdIt] != 0)
+	  if (*externalAttributeIdIt < tauVectorParam.size() && tauVectorParam[*externalAttributeIdIt] != 0)
 	    {
-	      attributes.push_back(new MetricAttribute(cardinalities, epsilonVector[*attributeIdIt], tauVectorParam[*attributeIdIt]));
+	      oldIds2NewIds.push_back(NoisyTuples::createNewIds(hyperplanes[*externalAttributeIdIt], cardinality, noisyTupleFileReader.getIds2Labels(*externalAttributeIdIt)));
 	    }
 	  else
 	    {
-	      attributes.push_back(new Attribute(cardinalities, epsilonVector[*attributeIdIt]));
-	    }	  
-	  oldIds2NewIds.push_back(attributes.back()->setLabels(labels2IdsInDimension));
+	      oldIds2NewIds.push_back(NoisyTuples::createNewIds(hyperplanes[*externalAttributeIdIt], cardinality));
+	    }
 	}
-      ++attributeIdIt;
+      if (dimensionId != 0)
+	{
+	  for (NoisyTuples* hyperplane : hyperplanes[*externalAttributeIdIt])
+	    {
+	      delete hyperplane;
+	    }
+	  largestNoise *= cardinality;
+	}
+      *cardinalityIt++ = cardinality;
+      ++externalAttributeIdIt;
+    }
+  Attribute::noisePerUnit = numeric_limits<unsigned int>::max() / largestNoise;
+#ifdef NUMERIC_PRECISION
+#ifdef GNUPLOT
+      cout << 1. / Attribute::noisePerUnit;
+#else
+      cout << "Numeric precision: " << 1. / Attribute::noisePerUnit << endl;
+#endif
+#endif
+  // Initialize attributes, minSizes and labels2Ids
+  labels2Ids.reserve(n);
+  minSizes.reserve(n);
+  cardinalityIt = cardinalities.begin();
+  vector<vector<unsigned int>>::const_iterator oldIds2NewIdsIt = oldIds2NewIds.begin();
+  externalAttributeIdIt = internal2ExternalAttributeOrder.begin();
+  attributes.reserve(n);
+  for (dimensionId = 0; dimensionId != n; ++dimensionId)
+    {
+      if (dimensionId == firstSymmetricAttributeId)
+	{
+	  minSizes.insert(minSizes.end(), cliqueDimensionsParam.size(), minSizeVector[*externalAttributeIdIt]);
+	  const vector<string> symmetricLabels = noisyTupleFileReader.setNewIdsAndGetSymmetricLabels(*oldIds2NewIdsIt, *cardinalityIt);
+	  cardinalityIt += cliqueDimensionsParam.size();
+	  oldIds2NewIdsIt += cliqueDimensionsParam.size();
+	  SymmetricAttribute* firstSymmetricAttribute = new SymmetricAttribute(cardinalities, epsilonVector[*externalAttributeIdIt++], symmetricLabels);
+	  SymmetricAttribute* secondSymmetricAttribute = new SymmetricAttribute(cardinalities, epsilonVector[*externalAttributeIdIt++], symmetricLabels);
+	  firstSymmetricAttribute->setSymmetricAttribute(secondSymmetricAttribute);
+	  secondSymmetricAttribute->setSymmetricAttribute(firstSymmetricAttribute);
+	  attributes.push_back(firstSymmetricAttribute);
+	  attributes.push_back(secondSymmetricAttribute);
+	  labels2Ids.insert(labels2Ids.end(), cliqueDimensionsParam.size(), noisyTupleFileReader.captureSymmetricLabels2Ids());
+	  ++dimensionId;
+	}
+      else
+	{
+	  if (*externalAttributeIdIt < tauVectorParam.size() && tauVectorParam[*externalAttributeIdIt] != 0)
+	    {
+	      attributes.push_back(new MetricAttribute(cardinalities, epsilonVector[*externalAttributeIdIt], noisyTupleFileReader.setNewIdsAndGetLabels(*externalAttributeIdIt, *oldIds2NewIdsIt++, *cardinalityIt++), tauVectorParam[*externalAttributeIdIt]));
+	    }
+	  else
+	    {
+	      attributes.push_back(new Attribute(cardinalities, epsilonVector[*externalAttributeIdIt], noisyTupleFileReader.setNewIdsAndGetLabels(*externalAttributeIdIt, *oldIds2NewIdsIt++, *cardinalityIt++)));
+	    }
+	  minSizes.push_back(minSizeVector[*externalAttributeIdIt]);
+	  labels2Ids.push_back(noisyTupleFileReader.captureLabels2Ids(*externalAttributeIdIt));
+	  ++externalAttributeIdIt;
+	}
+    }
+  // Compute order in which to access the tuples in hyperplanes of the first attribute; delete hyperplanes not in the first attribute
+  vector<unsigned int> attributeOrderForTuplesInFirstAtributeHyperplanes;
+  attributeOrderForTuplesInFirstAtributeHyperplanes.reserve(n - 1);
+  const unsigned int firstExternalAttributeId = internal2ExternalAttributeOrder.front();
+  const vector<unsigned int>::const_iterator externalAttributeIdEnd = internal2ExternalAttributeOrder.end();
+  for (externalAttributeIdIt = internal2ExternalAttributeOrder.begin(); ++externalAttributeIdIt != externalAttributeIdEnd; )
+    {
+      if (*externalAttributeIdIt < firstExternalAttributeId)
+	{
+	  attributeOrderForTuplesInFirstAtributeHyperplanes.push_back(*externalAttributeIdIt);
+	}
+      else
+	{
+	  if (*externalAttributeIdIt > firstExternalAttributeId)
+	    {
+	      attributeOrderForTuplesInFirstAtributeHyperplanes.push_back(*externalAttributeIdIt - 1);
+	    }
+	}
     }
   // Initialize data
   if (isCrisp)
@@ -474,26 +553,9 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
       // Insert every self loop
       data->setSelfLoops(firstSymmetricAttributeId, lastSymmetricAttributeId, attributes); // WARNING: start with the self loops (no code to insert self loops in dense structures)
     }
-  // Compute order in which to access the tuples in hyperplanes of the first attribute
-  vector<unsigned int> attributeOrderForTuplesInFirstAtributeHyperplanes;
-  attributeOrderForTuplesInFirstAtributeHyperplanes.reserve(n - 1);
-  for (vector<unsigned int>::const_iterator attributeIdIt = internal2ExternalAttributeOrder.begin() + 1; attributeIdIt != internal2ExternalAttributeOrder.end(); ++attributeIdIt)
-    {
-      if (*attributeIdIt < internal2ExternalAttributeOrder.front())
-	{
-	  attributeOrderForTuplesInFirstAtributeHyperplanes.push_back(*attributeIdIt);
-	}
-      else
-	{
-	  if (*attributeIdIt > internal2ExternalAttributeOrder.front())
-	    {
-	      attributeOrderForTuplesInFirstAtributeHyperplanes.push_back(*attributeIdIt - 1);
-	    }
-	}
-    }
   // Insert tuples but self loops
   unsigned int hyperplaneOldId = 0;
-  vector<NoisyTuples*>& hyperplanesInFirstAttribute = hyperplanes[internal2ExternalAttributeOrder.front()];
+  vector<NoisyTuples*>& hyperplanesInFirstAttribute = hyperplanes[firstExternalAttributeId];
   for (NoisyTuples* hyperplane : hyperplanesInFirstAttribute)
     {
       if (!hyperplane->empty())
@@ -503,13 +565,39 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const vector<
       delete hyperplane;
       ++hyperplaneOldId;
     }
+  // Initialize maxMembershipMinusShift (1 - lambda_0 in Mirkin's paper)
+  Node::setMaxMembershipMinusShift(static_cast<double>(Attribute::noisePerUnit) - shiftMultiplier * (static_cast<double>(Attribute::noisePerUnit) - attributes.front()->averagePresentAndPotentialNoise() / largestNoise));
+  // Initialize isClosedVector
+  unsigned int nbOfUnclosedSymmetricAttribute = 0;
+  vector<bool> isClosedVector(n, true);
+  for (const unsigned int unclosedAttributeId : unclosedDimensions)
+    {
+      const unsigned int internalAttributeId = external2InternalAttributeOrder[unclosedAttributeId];
+      if (internalAttributeId < firstSymmetricAttributeId || internalAttributeId > lastSymmetricAttributeId)
+	{
+	  isClosedVector[internalAttributeId] = false;
+	}
+      else
+	{
+	  ++nbOfUnclosedSymmetricAttribute;
+	}
+    }
+  if (nbOfUnclosedSymmetricAttribute != 0 && nbOfUnclosedSymmetricAttribute == cliqueDimensionsParam.size())
+    {
+      const vector<bool>::iterator end = isClosedVector.begin() + lastSymmetricAttributeId + 1;
+      for (vector<bool>::iterator isClosedVectorIt = isClosedVector.begin() + firstSymmetricAttributeId; isClosedVectorIt != end; ++isClosedVectorIt)
+	{
+	  *isClosedVectorIt = false;
+	}
+    }
+  Attribute::setIsClosedVector(isClosedVector);
 #ifdef DETAILED_TIME
   startingPoint = steady_clock::now();
 #endif
 }
 
 // Constructor of a left subtree
-Tree::Tree(const Tree& parent, const vector<Measure*>& mereConstraintsParam): attributes(), mereConstraints(mereConstraintsParam)
+Tree::Tree(const Tree& parent, const vector<Measure*>& mereConstraintsParam): attributes(), mereConstraints(std::move(mereConstraintsParam)), isEnumeratedElementPotentiallyPreventingClosedness(false)
 {
 #ifdef NB_OF_LEFT_NODES
   ++nbOfLeftNodes;
@@ -519,16 +607,23 @@ Tree::Tree(const Tree& parent, const vector<Measure*>& mereConstraintsParam): at
   attributes.reserve(parentAttributes.size());
   vector<unsigned int> sizeOfAttributes;
   sizeOfAttributes.reserve(parentAttributes.size() - 1);
-  for (vector<Attribute*>::const_iterator parentAttributeIt = parentAttributes.begin() + 1; parentAttributeIt != parentAttributes.end(); ++parentAttributeIt)
+  const vector<Attribute*>::const_iterator parentAttributeEnd = parentAttributes.end();
+  for (vector<Attribute*>::const_iterator parentAttributeIt = parentAttributes.begin(); ++parentAttributeIt != parentAttributeEnd; )
     {
       sizeOfAttributes.push_back((*parentAttributeIt)->globalSize());
     }
   const vector<unsigned int>::const_iterator sizeOfAttributesEnd = sizeOfAttributes.end();
   vector<unsigned int>::const_iterator sizeOfAttributeIt = sizeOfAttributes.begin();
-  const vector<Attribute*>::const_iterator parentAttributeEnd = parentAttributes.end();
   for (vector<Attribute*>::const_iterator parentAttributeIt = parentAttributes.begin(); parentAttributeIt != parentAttributeEnd; ++parentAttributeIt)
     {
       attributes.push_back((*parentAttributeIt)->clone(parentAttributeIt, parentAttributeEnd, sizeOfAttributeIt++, sizeOfAttributesEnd));
+    }
+  if (firstSymmetricAttributeId != numeric_limits<unsigned int>::max())
+    {
+      SymmetricAttribute* firstSymmetricAttribute = static_cast<SymmetricAttribute*>(attributes[firstSymmetricAttributeId]);
+      SymmetricAttribute* secondSymmetricAttribute = static_cast<SymmetricAttribute*>(attributes[firstSymmetricAttributeId + 1]);
+      firstSymmetricAttribute->setSymmetricAttribute(secondSymmetricAttribute);
+      secondSymmetricAttribute->setSymmetricAttribute(firstSymmetricAttribute);
     }
 }
 
@@ -541,7 +636,7 @@ Tree::~Tree()
   deleteMeasures(mereConstraints);
 }
 
-void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int maxArea, const vector<string>& groupFileNames, vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator)
+void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int maxArea, const vector<string>& groupFileNames, const vector<unsigned int>& groupMinSizesParam, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, const char* utilityValueFileName, const float minUtility, const char* valueElementSeparator, const char* valueDimensionSeparator, const char* slopePointFileName, const float minSlope, const char* pointElementSeparator, const char* pointDimensionSeparator, const float densityThreshold)
 {
   // Helper variables
   const unsigned int n = attributes.size();
@@ -549,7 +644,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
   cardinalities.reserve(n);
   for (const Attribute* attribute : attributes)
     {
-      cardinalities.push_back(attribute->sizeOfPotential());
+      cardinalities.push_back(attribute->sizeOfPresentAndPotential());
     }
   try
     {
@@ -569,24 +664,31 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	    }
 	  setMinParametersInClique(maxSizes);
 	}
-      // Initializing MinSize and MaxSize measures
+      // Initializing measures in increasing cost to update them
+      // Initializing MinSize measures
+      unsigned int minAreaAccordingToSizes = 1;
       for (unsigned int attributeId = 0; attributeId != n; ++attributeId)
 	{
-	  unsigned int size = minSizes[attributeId];
-	  if (size != 0)
+	  const unsigned int minSize = minSizes[attributeId];
+	  minAreaAccordingToSizes *= minSize;
+	  if (minSize != 0)
 	    {
-	      mereConstraints.push_back(new MinSize(attributeId, cardinalities[attributeId], size));
-	    }
-	  size = maxSizes[attributeId];
-	  if (size < cardinalities[attributeId])
-	    {
-	      mereConstraints.push_back(new MaxSize(attributeId, size));
+	      mereConstraints.push_back(new MinSize(attributeId, cardinalities[attributeId], minSize));
 	    }
 	}
       // Initializing minArea measure
-      if (minArea != 0)
+      if (minArea > minAreaAccordingToSizes)
 	{
-	  mereConstraints.push_back(new MinArea(cardinalities, static_cast<unsigned int>(minArea)));
+	  mereConstraints.push_back(new MinArea(cardinalities, minArea));
+	}
+      // Initializing MaxSize measures
+      for (unsigned int attributeId = 0; attributeId != n; ++attributeId)
+	{
+	  const unsigned int maxSize = maxSizes[attributeId];
+	  if (maxSize < cardinalities[attributeId])
+	    {
+	      mereConstraints.push_back(new MaxSize(attributeId, maxSize));
+	    }
 	}
       // Initializing maxArea measure
       if (maxArea != -1)
@@ -597,17 +699,12 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	{
 	  // Initializing groups
 	  GroupMeasure::initGroups(groupFileNames, groupElementSeparator, groupDimensionElementsSeparator, cardinalities, labels2Ids, external2InternalAttributeOrder);
-	  bool isEveryGroupElementToBePresent = true;
 	  // groupMinSizes is to be modified according to the diagonals of MinGroupCoverRatios, MinGroupCoverPiatetskyShapiros, MinGroupCoverLeverages, MinGroupCoverForces, MinGroupCoverYulesQs and  MinGroupCoverYulesYs
-	  if (!groupMinSizes.empty())
-	    {
-	      isEveryGroupElementToBePresent = false;
-	    }
+	  vector<unsigned int> groupMinSizes = groupMinSizesParam;
 	  groupMinSizes.resize(groupFileNames.size());
 	  // Initializing MinGroupCoverRatio measures
 	  if (!groupMinRatios.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinRatios)
@@ -623,7 +720,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 			{
 			  if (rowId == columnId)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(ratio);
+			      const unsigned int groupMinSizeAccordingToMatrix = ratio;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -643,7 +740,6 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	  // Initializing MinGroupCoverPiatetskyShapiro measures
 	  if (!groupMinPiatetskyShapiros.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinPiatetskyShapiros)
@@ -657,7 +753,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 		    {
 		      if (rowId == columnId)
 			{
-			  const int groupMinSizeAccordingToMatrix = static_cast<int>(piatetskyShapiro);
+			  const int groupMinSizeAccordingToMatrix = piatetskyShapiro;
 			  if (groupMinSizeAccordingToMatrix > static_cast<int>(*groupMinSizeIt))
 			    {
 			      *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -665,7 +761,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 			}
 		      else
 			{
-			  if (-static_cast<float>(GroupMeasure::maxCoverOfGroup(rowId)) < piatetskyShapiro * static_cast<float>(GroupMeasure::maxCoverOfGroup(columnId)))
+			  if (-GroupMeasure::maxCoverOfGroup(rowId) < piatetskyShapiro * GroupMeasure::maxCoverOfGroup(columnId))
 			    {
 			      mereConstraints.push_back(new MinGroupCoverPiatetskyShapiro(rowId, columnId, piatetskyShapiro));
 			    }
@@ -679,7 +775,6 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	  // Initializing MinGroupCoverLeverage measures
 	  if (!groupMinLeverages.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinLeverages)
@@ -693,7 +788,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 		    {
 		      if (rowId == columnId)
 			{
-			  const int groupMinSizeAccordingToMatrix = static_cast<int>(leverage);
+			  const int groupMinSizeAccordingToMatrix = leverage;
 			  if (groupMinSizeAccordingToMatrix > static_cast<int>(*groupMinSizeIt))
 			    {
 			      *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -701,7 +796,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 			}
 		      else
 			{
-			  if (-static_cast<float>(GroupMeasure::maxCoverOfGroup(rowId)) < leverage * static_cast<float>(GroupMeasure::maxCoverOfGroup(columnId)))
+			  if (-GroupMeasure::maxCoverOfGroup(rowId) < leverage * GroupMeasure::maxCoverOfGroup(columnId))
 			    {
 			      mereConstraints.push_back(new MinGroupCoverLeverage(rowId, columnId, leverage));
 			    }
@@ -715,7 +810,6 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	  // Initializing MinGroupCoverForce measures
 	  if (!groupMinForces.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinForces)
@@ -731,7 +825,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 			{
 			  if (rowId == columnId)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(force);
+			      const unsigned int groupMinSizeAccordingToMatrix = force;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -751,7 +845,6 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	  // Initializing MinGroupCoverYulesQ measures
 	  if (!groupMinYulesQs.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinYulesQs)
@@ -767,7 +860,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 			{
 			  if (yulesQ > 0)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(yulesQ);
+			      const unsigned int groupMinSizeAccordingToMatrix = yulesQ;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -790,7 +883,6 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	  // Initializing MinGroupCoverYulesY measures
 	  if (!groupMinYulesYs.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinYulesYs)
@@ -806,7 +898,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 			{
 			  if (yulesY > 0)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(yulesY);
+			      const unsigned int groupMinSizeAccordingToMatrix = yulesY;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -827,8 +919,9 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 		}
 	    }
 	  // Initializing MinGroupCover measures
+	  const vector<unsigned int>::const_iterator end = groupMinSizes.end();
 	  vector<unsigned int>::const_iterator groupMinSizeIt = groupMinSizes.begin();
-	  for (unsigned int groupId = 0; groupMinSizeIt != groupMinSizes.end(); ++groupId)
+	  for (unsigned int groupId = 0; groupMinSizeIt != end; ++groupId)
 	    {
 	      if (*groupMinSizeIt != 0)
 		{
@@ -839,7 +932,6 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 	  // Initializing MaxGroupCover measures
 	  if (!groupMaxSizes.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int groupId = 0;
 	      for (const unsigned int groupMaxSize : groupMaxSizes)
 		{
@@ -850,7 +942,7 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 		  ++groupId;
 		}
 	    }
-	  if (isEveryGroupElementToBePresent)
+	  if (groupMinSizesParam.empty() && groupMaxSizes.empty() && groupMinRatios.empty() && groupMinPiatetskyShapiros.empty() && groupMinLeverages.empty() && groupMinForces.empty() && groupMinYulesQs.empty() && groupMinYulesYs.empty())
 	    {
 	      for (unsigned int groupId = 0; groupId != groupFileNames.size(); ++groupId)
 		{
@@ -858,6 +950,18 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
 		}
 	    }
 	  GroupMeasure::allMeasuresSet();
+	}
+      // Initializing min utility measure
+      const string utilityValueFileNameString(utilityValueFileName);
+      if (!utilityValueFileNameString.empty())
+	{
+	  mereConstraints.push_back(new MinUtility(utilityValueFileNameString, valueDimensionSeparator, valueElementSeparator, labels2Ids, external2InternalAttributeOrder, cardinalities, densityThreshold, minUtility));
+	}
+      // Initializing min slope measure
+      const string slopePointFileNameString(slopePointFileName);
+      if (!slopePointFileNameString.empty())
+	{
+	  mereConstraints.push_back(new MinSlope(slopePointFileNameString, pointDimensionSeparator, pointElementSeparator, labels2Ids, external2InternalAttributeOrder, cardinalities, densityThreshold, minSlope));
 	}
     }
   catch (std::exception& e)
@@ -867,10 +971,32 @@ void Tree::initMeasures(const vector<unsigned int>& maxSizesParam, const int max
       rethrow_exception(current_exception());
     }
   labels2Ids.clear();
+  TupleMeasure::allMeasuresSet(cardinalities);
+  stable_partition(mereConstraints.begin(), mereConstraints.end(), monotone);
+}
+
+void Tree::mine()
+{
+  if (attributes.empty())
+    {
+#ifdef NUMERIC_PRECISION
+#ifdef GNUPLOT
+      cout << numeric_limits<double>::epsilon();
+#else
+      cout << "Numeric precision: " << numeric_limits<double>::epsilon() << endl;
+#endif
+#endif
+      terminate();
+      return;
+    }
+  peel();
+  terminate();
 }
 
 void Tree::terminate()
 {
+  MinUtility::deleteTupleValues();
+  MinSlope::deleteTuplePoints();
 #ifdef DETAILED_TIME
   const double miningDuration = duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
   double agglomerationDuration = 0;
@@ -883,13 +1009,6 @@ void Tree::terminate()
       for (pair<list<Node*>::const_iterator, list<Node*>::const_iterator> nodeRange = Node::agglomerateAndSelect(data); nodeRange.first != nodeRange.second; ++nodeRange.first)
 	{
 #ifdef OUTPUT
-	  unsigned int area = 0;
-	  float areaTimesNoisePerUnit = Attribute::noisePerUnit;
-	  if (isAreaPrinted || Attribute::noisePrinted())
-	    {
-	      area = (*nodeRange.first)->area();
-	      areaTimesNoisePerUnit *= static_cast<float>(area);
-	    }
 	  bool isFirst = true;
 	  for (const unsigned int internalAttributeId : external2InternalAttributeOrder)
 	    {
@@ -903,9 +1022,7 @@ void Tree::terminate()
 		}
 	      bool isFirstElement = true;
 	      const Attribute& attribute = *attributes[internalAttributeId];
-	      const vector<Element>& patternDimension = (*nodeRange.first)->dimension(internalAttributeId);
-	      const float hyperplaneAreaDividedByNoisePerUnit = areaTimesNoisePerUnit / patternDimension.size();
-	      for (const Element& element : patternDimension)
+	      for (const unsigned int id : (*nodeRange.first)->dimension(internalAttributeId))
 		{
 		  if (isFirstElement)
 		    {
@@ -915,11 +1032,7 @@ void Tree::terminate()
 		    {
 		      Attribute::printOutputElementSeparator(outputFile);
 		    }
-		  attribute.printValueFromOriginalId(element.getId(), outputFile);
-		  if (area != 0)
-		    {
-		      Attribute::printNoise(static_cast<float>(element.getNoise()) / hyperplaneAreaDividedByNoisePerUnit, outputFile);
-		    }
+		  attribute.printValueFromDataId(id, outputFile);
 		}
 	    }
 	  if (isSizePrinted)
@@ -941,7 +1054,7 @@ void Tree::terminate()
 	    }
 	  if (isAreaPrinted)
 	    {
-	      outputFile << sizeAreaSeparator << area;
+	      outputFile << sizeAreaSeparator << (*nodeRange.first)->getArea();
 	    }
 	  outputFile << endl;
 #endif
@@ -955,13 +1068,37 @@ void Tree::terminate()
   delete data;
 #ifdef GNUPLOT
 #ifdef NB_OF_CLOSED_N_SETS
-  cout << nbOfClosedNSets << '\t';
+#ifdef NUMERIC_PRECISION
+  cout << '\t';
+#endif
+  cout << nbOfClosedNSets;
 #endif
 #ifdef NB_OF_LEFT_NODES
-  cout << nbOfLeftNodes << '\t';
+#if defined NUMERIC_PRECISION || defined NB_OF_CLOSED_N_SETS
+  cout << '\t';
+#endif
+  cout << nbOfLeftNodes;
 #endif
 #ifdef TIME
-  cout << duration_cast<duration<double>>(steady_clock::now() - overallBeginning).count() << '\t';
+#if defined NUMERIC_PRECISION || defined NB_OF_CLOSED_N_SETS || defined NB_OF_LEFT_NODES
+  cout << '\t';
+#endif
+  cout << duration_cast<duration<double>>(steady_clock::now() - overallBeginning).count();
+#endif
+#ifdef DETAILED_TIME
+#if defined NUMERIC_PRECISION || defined NB_OF_CLOSED_N_SETS || defined NB_OF_LEFT_NODES || defined TIME
+  cout << '\t';
+#endif
+  cout << parsingDuration << '\t' << preProcessingDuration << '\t' << miningDuration << '\t' << agglomerationDuration;
+#endif
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+#if defined NUMERIC_PRECISION || defined NB_OF_CLOSED_N_SETS || defined NB_OF_LEFT_NODES || defined TIME || defined DETAILED_TIME
+  cout << '\t';
+#endif
+  cout << minSizeElementPruningDuration;
+#endif
+#if defined NUMERIC_PRECISION || defined NB_OF_CLOSED_N_SETS || defined NB_OF_LEFT_NODES || defined TIME || defined DETAILED_TIME || defined MIN_SIZE_ELEMENT_PRUNING_TIME
+  cout << endl;
 #endif
 #else
 #ifdef NB_OF_CLOSED_N_SETS
@@ -973,35 +1110,33 @@ void Tree::terminate()
 #ifdef TIME
   cout << "Total time: " << duration_cast<duration<double>>(steady_clock::now() - overallBeginning).count() << 's' << endl;
 #endif
-#endif
 #ifdef DETAILED_TIME
-#ifdef GNUPLOT
-  cout << parsingDuration << '\t' << preProcessingDuration << '\t' << miningDuration << '\t' << agglomerationDuration << '\t';
-#else
   cout << "Parsing time: " << parsingDuration << 's' << endl << "Pre-processing time: " << preProcessingDuration << 's' << endl << "Mining time: " << miningDuration << 's' << endl << "Agglomeration time: " << agglomerationDuration << 's' << endl;
 #endif
-  attributes.back()->printDurations(cout);
-  cout << endl;
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+  cout << "Time spent identifying min-size irrelevant elements: " << minSizeElementPruningDuration << 's' << endl;
 #endif
-#if defined GNUPLOT && (defined NB_OF_CLOSED_N_SETS || defined NB_OF_LEFT_NODES || defined TIME)
-  cout << endl;
 #endif
 }
 
-void Tree::leftSubtree(const unsigned int presentAttributeId, const unsigned int originalValueId) const
+const bool Tree::leftSubtree(const Attribute& presentAttribute) const
 {
-  const vector<Measure*> childMereConstraints = childMeasures(mereConstraints, presentAttributeId, originalValueId);
+  const unsigned int presentAttributeId = presentAttribute.getId();
+  vector<Measure*> childMereConstraints = childMeasures(mereConstraints, presentAttributeId, presentAttribute.getChosenValue().getDataId());
   if (childMereConstraints.size() == mereConstraints.size())
     {
-      Tree(*this, childMereConstraints).setPresent(presentAttributeId, originalValueId);
+      Tree leftChild(*this, childMereConstraints);
+      leftChild.setPresent(presentAttributeId);
+      return leftChild.isEnumeratedElementPotentiallyPreventingClosedness;
     }
+  return true;
 }
 
-vector<Measure*> Tree::childMeasures(const vector<Measure*>& parentMeasures, const unsigned int presentAttributeId, const unsigned int originalValueId)
+vector<Measure*> Tree::childMeasures(const vector<Measure*>& parentMeasures, const unsigned int presentAttributeId, const unsigned int presentValueId)
 {
   vector<Measure*> childMeasures;
   childMeasures.reserve(parentMeasures.size());
-  const vector<unsigned int> elementSetPresent {originalValueId};
+  const vector<unsigned int> elementSetPresent {presentValueId};
   for (const Measure* measure : parentMeasures)
     {
       Measure* childMeasure = measure->clone();
@@ -1040,255 +1175,150 @@ void Tree::deleteMeasures(vector<Measure*>& measures)
     }
 }
 
-void Tree::setPresent(const unsigned int presentAttributeId, const unsigned int valueOriginalId)
+const bool Tree::monotone(const Measure* measure)
 {
-  const vector<Attribute*>::iterator attributeBegin = attributes.begin();
-  vector<Attribute*>::iterator presentAttributeIt = attributeBegin + presentAttributeId;
-  Value* presentValue = (*presentAttributeIt)->moveValueFromPotentialToPresent(valueOriginalId);
-  data->setPresent(presentAttributeIt, *presentValue, attributeBegin);
-  // If attribute is symmetric, it always is the first one (given how chosen in peel)
-  const bool isPresentAttributeSymmetric = presentAttributeId == firstSymmetricAttributeId;
-  if (isPresentAttributeSymmetric)
-    {
-      for (unsigned int symmetricAttributeId = firstSymmetricAttributeId; symmetricAttributeId != lastSymmetricAttributeId; ++symmetricAttributeId)
-	{
-	  ++presentAttributeIt;
-	  data->setPresent(presentAttributeIt, *static_cast<SymmetricAttribute*>(*presentAttributeIt)->moveSymmetricValueFromPotentialToPresent(*presentValue), attributeBegin);
-	}
-    }
-  vector<IrrelevantValueIds> irrelevantValueIdsVector;
-  irrelevantValueIdsVector.reserve(attributes.size());
-  vector<Attribute*>::iterator attributeIt = attributeBegin;
-  const vector<Attribute*>::const_iterator attributeEnd = attributes.end();
-  if (firstSymmetricAttributeId != numeric_limits<unsigned int>::max())
-    {
-      IrrelevantValueIds irrelevantSymmetricValueIds;
-      vector<unsigned int> newIrrelevantSymmetricValues;
-      newIrrelevantSymmetricValues.reserve(attributes[firstSymmetricAttributeId]->sizeOfPotential());
-      for (unsigned int symmetricAttributeId = firstSymmetricAttributeId; symmetricAttributeId <= lastSymmetricAttributeId; ++attributeIt)
-      	{
-      	  const unsigned int attributeId = (*attributeIt)->getId();
-      	  if (attributeId == symmetricAttributeId)
-      	    {
-      	      if (symmetricAttributeId == lastSymmetricAttributeId)
-      		{
-      		  const vector<unsigned int> newestIrrelevantValues = (*attributeIt)->findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd, irrelevantSymmetricValueIds).second;
-      		  newIrrelevantSymmetricValues.insert(newIrrelevantSymmetricValues.end(), newestIrrelevantValues.begin(), newestIrrelevantValues.end());
-		  vector<Attribute*>::iterator symmetricAttributeIt = attributeBegin + firstSymmetricAttributeId;
-      		  for (symmetricAttributeId = firstSymmetricAttributeId; symmetricAttributeId <= lastSymmetricAttributeId; ++symmetricAttributeId)
-      		    {
-      		      if (!newIrrelevantSymmetricValues.empty() && violationAfterRemoving(symmetricAttributeId, newIrrelevantSymmetricValues))
-      			{
-      			  return;
-      			}
-      		      irrelevantSymmetricValueIds.setAttributeIt(symmetricAttributeIt);
-      		      irrelevantValueIdsVector.push_back(irrelevantSymmetricValueIds);
-		      ++symmetricAttributeIt;
-      		    }
-      		}
-      	      else
-      		{
-      		  const vector<unsigned int> newestIrrelevantValues = (*attributeIt)->findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd, irrelevantSymmetricValueIds).second;
-      		  newIrrelevantSymmetricValues.insert(newIrrelevantSymmetricValues.end(), newestIrrelevantValues.begin(), newestIrrelevantValues.end());
-      		}
-	      ++symmetricAttributeId;
-      	    }
-      	  else
-      	    {
-      	      IrrelevantValueIds irrelevantValueIds(attributeIt);
-      	      const pair<bool, vector<unsigned int>> isViolatingTauContiguityAndNewIrrelevantValues = (*attributeIt)->findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd, irrelevantValueIds);
-      	      if (isViolatingTauContiguityAndNewIrrelevantValues.first || (!isViolatingTauContiguityAndNewIrrelevantValues.second.empty() && violationAfterRemoving(attributeId, isViolatingTauContiguityAndNewIrrelevantValues.second)))
-      		{
-      		  return;
-      		}
-      	      irrelevantValueIdsVector.push_back(irrelevantValueIds);
-      	    }
-      	}
-    }
-  for (; attributeIt != attributeEnd; ++attributeIt)
-    {
-      IrrelevantValueIds irrelevantValueIds(attributeIt);
-      const pair<bool, vector<unsigned int>> isViolatingTauContiguityAndNewIrrelevantValues = (*attributeIt)->findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd, irrelevantValueIds);
-      if (isViolatingTauContiguityAndNewIrrelevantValues.first || (!isViolatingTauContiguityAndNewIrrelevantValues.second.empty() && violationAfterRemoving((*attributeIt)->getId(), isViolatingTauContiguityAndNewIrrelevantValues.second)))
-	{
-	  return;
-	}
-      irrelevantValueIdsVector.push_back(irrelevantValueIds);
-    }
-  if (dominated())
-    {
-      return;
-    }
-  if (isPresentAttributeSymmetric)
-    {
-      for (Attribute* attributeToClean : attributes)
-	{
-	  attributeToClean->cleanAbsent(attributeBegin, attributeEnd);
-	}
-    }
-  else
-    {
-      for (vector<Attribute*>::iterator attributeToCleanIt = attributeBegin; attributeToCleanIt != attributeEnd; ++attributeToCleanIt)
-	{
-	  if (attributeToCleanIt != presentAttributeIt)
-	    {
-	      (*attributeToCleanIt)->cleanAbsent(attributeBegin, attributeEnd);
-	    }
-	}
-    }
-  if (setAbsent(irrelevantValueIdsVector))
-    {
-      peel();
-    }
+  return measure->monotone();
 }
 
-void Tree::rightSubtree(const vector<Attribute*>::iterator absentAttributeIt, const vector<Value*>::iterator valueIt)
+void Tree::setPresent(const unsigned int presentAttributeId)
 {
-#ifdef DEBUG
-  cout << "Right child: ";
-  (*absentAttributeIt)->printValue(**valueIt, cout);
-  cout << " set absent." << endl << "Node before:" << endl;
-  printNode(cout);
-  cout << endl;
-#endif
   const vector<Attribute*>::iterator attributeBegin = attributes.begin();
+  const vector<Attribute*>::iterator presentAttributeIt = attributeBegin + presentAttributeId;
   // If attribute is symmetric, it always is the first one (given how chosen in peel)
-  if ((*absentAttributeIt)->getId() == firstSymmetricAttributeId)
+  if (presentAttributeId == firstSymmetricAttributeId)
     {
-      const vector<unsigned int> elementSetAbsent {(*valueIt)->getOriginalId()};
-      if (violationAfterRemoving(firstSymmetricAttributeId, elementSetAbsent))
-	{
-	  return;
-	}
-      const Value* absentValue = (*absentAttributeIt)->moveValueFromPotentialToAbsent(valueIt);
-      vector<Attribute*>::iterator symmetricAttributeIt = absentAttributeIt + 1;
-      for (unsigned int symmetricAttributeId = firstSymmetricAttributeId + 1; symmetricAttributeId <= lastSymmetricAttributeId; ++symmetricAttributeId)
-	{
-	  if (violationAfterRemoving(symmetricAttributeId, elementSetAbsent))
-	    {
-	      return;
-	    }
-	  static_cast<SymmetricAttribute*>(*(symmetricAttributeIt))->moveSymmetricValueFromPotentialToAbsent(absentValue);
-	  ++symmetricAttributeIt;
-	}
-      if (dominated())
-	{
-	  return;
-	}
-      for (unsigned int symmetricAttributeId = firstSymmetricAttributeId; symmetricAttributeId <= lastSymmetricAttributeId; ++symmetricAttributeId)
-	{
-	  data->setAbsent(--symmetricAttributeIt, elementSetAbsent, attributeBegin);
-	}
+      data->setSymmetricPresent(presentAttributeIt, attributeBegin);
     }
   else
     {
-      const Value* absentValue = (*absentAttributeIt)->moveValueFromPotentialToAbsent(valueIt);
-      pair<const bool, vector<unsigned int>> tauFarValueOriginalIds = (*absentAttributeIt)->tauFarValueOriginalValueIdsAndCheckConstraints(absentValue);
-      if (tauFarValueOriginalIds.first)
-	{
-	  return;
-	}
-      tauFarValueOriginalIds.second.push_back(absentValue->getOriginalId());
-      if (violationAfterRemoving((*absentAttributeIt)->getId(), tauFarValueOriginalIds.second) || dominated())
-	{
-	  return;
-	}
-      data->setAbsent(absentAttributeIt, tauFarValueOriginalIds.second, attributeBegin);
+      data->setPresent(presentAttributeIt, attributeBegin);
     }
-#ifdef MIN_SIZE_ELEMENT_PRUNING
-  vector<IrrelevantValueIds> irrelevantValueIdsVector;
-  irrelevantValueIdsVector.reserve(attributes.size());
+  (*presentAttributeIt)->setChosenValuePresent();
   const vector<Attribute*>::iterator attributeEnd = attributes.end();
-  for (vector<Attribute*>::iterator attributeIt = attributeBegin; attributeIt != attributeEnd; ++attributeIt)
+  vector<Attribute*>::iterator attributeIt = attributeBegin;
+  for (; attributeIt != attributeEnd && !(*attributeIt)->findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd) && ((*attributeIt)->irrelevantEmpty() || !violationAfterRemoving((*attributeIt)->getId(), (*attributeIt)->getIrrelevantDataIds())); ++attributeIt)
     {
-      irrelevantValueIdsVector.push_back(IrrelevantValueIds(attributeIt));
     }
-  if (findMinSizeIrrelevantValuesAndCheckConstraints(irrelevantValueIdsVector, absentAttributeIt) && setAbsent(irrelevantValueIdsVector))
+  if (attributeIt == attributeEnd && !dominated())
     {
+      for (Attribute* attribute : attributes)
+	{
+	  attribute->cleanAbsent(attributeBegin, attributeEnd);
+	}
+      if (setAbsent())
+	{
+	  peel();
+	}
+    }
+}
+
+void Tree::rightSubtree(Attribute& absentAttribute, const bool isLastEnumeratedElementPotentiallyPreventingClosedness)
+{
+  const unsigned int absentAttributeId = absentAttribute.getId();
+  const pair<const bool, vector<unsigned int>> tauFarValueDataIds = absentAttribute.tauFarValueDataIdsAndCheckTauContiguity();
+  if (!(tauFarValueDataIds.first || violationAfterRemoving(absentAttributeId, tauFarValueDataIds.second) || dominated()))
+    {
+      const vector<Attribute*>::iterator attributeBegin = attributes.begin();
+      const vector<Attribute*>::iterator absentAttributeIt = attributeBegin + absentAttributeId;
+      // If attribute is symmetric, it always is the first one (given how chosen in peel)
+      if (absentAttributeId == firstSymmetricAttributeId)
+	{
+	  data->setSymmetricAbsent(absentAttributeIt, attributeBegin);
+	}
+      else
+	{
+	  data->setAbsent(absentAttributeIt, tauFarValueDataIds.second, attributeBegin);
+	}
+      (*absentAttributeIt)->setChosenValueAbsent(isLastEnumeratedElementPotentiallyPreventingClosedness);
+#ifdef MIN_SIZE_ELEMENT_PRUNING
+      if (findMinSizeIrrelevantValuesAndCheckConstraints(absentAttributeIt) && setAbsent())
+	{
+	  peel();
+	}
+#else
       peel();
-    }
-#else
-  peel();
 #endif
+    }
 }
 
-const bool Tree::setAbsent(vector<IrrelevantValueIds>& irrelevantValueIdsVector)
+const bool Tree::setAbsent()
 {
-  const vector<IrrelevantValueIds>::iterator irrelevantValueIdsIt = min_element(irrelevantValueIdsVector.begin(), irrelevantValueIdsVector.end());
-  if (irrelevantValueIdsIt->someIrrelevantElement())
+  const vector<Attribute*>::iterator attributeBegin = attributes.begin();
+  const vector<Attribute*>::iterator attributeToPurgeIt = max_element(attributeBegin, attributes.end(), Attribute::lessAppealingIrrelevant);
+  if ((*attributeToPurgeIt)->irrelevantEmpty())
     {
-      const vector<Attribute*>::iterator attributeToPurgeIt = irrelevantValueIdsIt->getAttributeIt();
-      data->setAbsent(attributeToPurgeIt, (*attributeToPurgeIt)->erasePotentialValues(irrelevantValueIdsIt->irrelevantValueIds), attributes.begin());
-      irrelevantValueIdsIt->clear();
-#ifdef MIN_SIZE_ELEMENT_PRUNING
-      return findMinSizeIrrelevantValuesAndCheckConstraints(irrelevantValueIdsVector, attributeToPurgeIt) && setAbsent(irrelevantValueIdsVector);
-#else
-      return setAbsent(irrelevantValueIdsVector);
-#endif
+      return true;
     }
-  return true;
+  data->setAbsent(attributeToPurgeIt, (*attributeToPurgeIt)->eraseIrrelevantValues(), attributeBegin);
+#ifdef MIN_SIZE_ELEMENT_PRUNING
+  return findMinSizeIrrelevantValuesAndCheckConstraints(attributeToPurgeIt) && setAbsent();
+#else
+  return setAbsent();
+#endif
 }
 
 #ifdef MIN_SIZE_ELEMENT_PRUNING
-const bool Tree::findMinSizeIrrelevantValuesAndCheckConstraints(vector<IrrelevantValueIds>& irrelevantValueIdsVector, const vector<Attribute*>::iterator previousAbsentAttributeIt)
+const bool Tree::findMinSizeIrrelevantValuesAndCheckConstraints(const vector<Attribute*>::iterator previousAbsentAttributeIt)
 {
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+  const steady_clock::time_point startingPoint = steady_clock::now();
+#endif
   const vector<unsigned int> thresholds = minSizeIrrelevancyThresholds();
-  vector<IrrelevantValueIds>::iterator irrelevantValueIdsIt = irrelevantValueIdsVector.begin();
-  for (vector<Attribute*>::iterator attributeIt = attributes.begin(); attributeIt != attributes.end(); ++attributeIt)
+  const vector<Attribute*>::iterator attributeEnd = attributes.end();
+  vector<Attribute*>::iterator attributeIt = attributes.begin();
+  for (; attributeIt != attributeEnd && !((attributeIt != previousAbsentAttributeIt || dynamic_cast<SymmetricAttribute*>(*attributeIt)) && (*attributeIt)->presentAndPotentialIrrelevant(thresholds[(*attributeIt)->getId()])); ++attributeIt)
     {
-      const unsigned int attributeId = (*attributeIt)->getId();
+    }
+  if (attributeIt != attributeEnd)
+    {
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+      minSizeElementPruningDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
+#endif
+      return false;
+    }
+  for (Attribute* attribute : attributes)
+    {
+      const unsigned int attributeId = attribute->getId();
       if (attributeId < firstSymmetricAttributeId || attributeId > lastSymmetricAttributeId)
   	{
-  	  if (attributeIt != previousAbsentAttributeIt)
+  	  if (attribute != *previousAbsentAttributeIt)
 	    {
 	      const unsigned int threshold = thresholds[attributeId];
-	      if ((*attributeIt)->presentAndPotentialIrrelevant(threshold))
-		{
-		  return false;
-		}
-	      const pair<bool, vector<unsigned int>> isViolatingTauContiguityAndNewIrrelevantValues = (*attributeIt)->findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(threshold, *irrelevantValueIdsIt);
+	      const pair<bool, vector<unsigned int>> isViolatingTauContiguityAndNewIrrelevantValues = attribute->findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(threshold);
 	      if (isViolatingTauContiguityAndNewIrrelevantValues.first || (!isViolatingTauContiguityAndNewIrrelevantValues.second.empty() && violationAfterRemoving(attributeId, isViolatingTauContiguityAndNewIrrelevantValues.second)))
 		{
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+		  minSizeElementPruningDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
+#endif
 		  return false;
 		}
-	      (*attributeIt)->presentAndPotentialCleanAbsent(threshold);
+	      attribute->presentAndPotentialCleanAbsent(threshold);
 	    }
   	}
       else
   	{
 	  const unsigned int threshold = thresholds[attributeId];
-	  if ((*attributeIt)->presentAndPotentialIrrelevant(threshold))
-	    {
-	      return false;
-	    }
-	  IrrelevantValueIds tmp(*irrelevantValueIdsIt);
-	  const vector<unsigned int> newIrrelevantValues = (*attributeIt)->findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(threshold, *irrelevantValueIdsIt).second;
+	  vector<unsigned int> newIrrelevantValues = attribute->findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(threshold).second;
 	  if (!newIrrelevantValues.empty())
 	    {
-	      if (violationAfterRemoving(attributeId, newIrrelevantValues))
+	      unsigned int symmetricAttributeId = firstSymmetricAttributeId;
+	      for (; symmetricAttributeId <= lastSymmetricAttributeId && !violationAfterRemoving(symmetricAttributeId, newIrrelevantValues); ++symmetricAttributeId)
 		{
+		}
+	      if (symmetricAttributeId <= lastSymmetricAttributeId)
+		{
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+		  minSizeElementPruningDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
+#endif
 		  return false;
 		}
-	      // Copy new irrelevant values to other symmetric IrrelevantValues
-	      vector<IrrelevantValueIds>::iterator otherIrrelevantValueIdsIt = irrelevantValueIdsVector.begin() + firstSymmetricAttributeId;
-	      tmp.newIrrelevantValues(*irrelevantValueIdsIt);
-	      for (unsigned int otherSymmetricAttributeId = firstSymmetricAttributeId; otherSymmetricAttributeId <= lastSymmetricAttributeId; ++otherSymmetricAttributeId)
-		{
-		  if (otherSymmetricAttributeId != attributeId)
-		    {
-		      if (violationAfterRemoving(otherSymmetricAttributeId, newIrrelevantValues))
-			{
-			  return false;
-			}
-		      otherIrrelevantValueIdsIt->mergeWith(tmp);
-		    }
-		  ++otherIrrelevantValueIdsIt;
-		}
 	    }
-	  static_cast<SymmetricAttribute*>(*attributeIt)->presentAndPotentialCleanAbsent(threshold, attributeIt);
-  	}
-      ++irrelevantValueIdsIt;
+	  attribute->presentAndPotentialCleanAbsent(threshold);
+	}
     }
+#ifdef MIN_SIZE_ELEMENT_PRUNING_TIME
+  minSizeElementPruningDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
+#endif
   return !dominated();
 }
 
@@ -1306,7 +1336,7 @@ vector<unsigned int> Tree::minSizeIrrelevancyThresholds() const
       for (const Attribute* attribute : attributes)
 	{
 	  minimalPatternSizes.push_back(max(*minSizeIt++, attribute->sizeOfPresent()));
-	  maximalPatternSizes.push_back(attribute->sizeOfPresent() + attribute->sizeOfPotential());
+	  maximalPatternSizes.push_back(attribute->sizeOfPresentAndPotential());
 	}
       // Sum the epsilons with the number of non-self-loops tuples in the maximal pattern and subtract the number of non-self-loops tuples in the minimal pattern
       vector<unsigned int> thresholds(Attribute::getEpsilonVector());
@@ -1315,7 +1345,7 @@ vector<unsigned int> Tree::minSizeIrrelevancyThresholds() const
       for (unsigned int dimensionId = 0; dimensionId != n; ++dimensionId)
 	{
 	  // TODO: check whether round-off errors are problematic (round instead of ceil?)
-	  *thresholdIt++ += Attribute::noisePerUnit * (IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, 0) - max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, 0)), ceil(minArea / ((*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential()))));
+	  *thresholdIt++ += Attribute::noisePerUnit * (IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, 0) - max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, 0)), ceil(minArea / (*attributeIt)->sizeOfPresentAndPotential())));
 	  ++attributeIt;
 	}
       return thresholds;
@@ -1329,7 +1359,7 @@ vector<unsigned int> Tree::minSizeIrrelevancyThresholds() const
     {
       unsigned int size = max(*minSizeIt, (*attributeIt)->sizeOfPresent());
       minimalPatternSizes.push_back(size);
-      size = (*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential();
+      size = (*attributeIt)->sizeOfPresentAndPotential();
       if (dimensionId < firstSymmetricAttributeId || dimensionId > lastSymmetricAttributeId)
 	{
 	  maxAreaIgnoringSymmetricAttributes *= size;
@@ -1370,12 +1400,12 @@ vector<unsigned int> Tree::minSizeIrrelevancyThresholds() const
       if (dimensionId < firstSymmetricAttributeId || dimensionId > lastSymmetricAttributeId)
 	{
 	  // TODO: check whether round-off errors are problematic (round instead of ceil?)
-	  *thresholdIt++ += Attribute::noisePerUnit * (IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, minNbOfSymmetricElements) - max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, minNbOfSymmetricElements)), ceil((minArea - maxAreaIgnoringSymmetricAttributes * maxNbOfSymmetricElements) / ((*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential()))));
+	  *thresholdIt++ += Attribute::noisePerUnit * (IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, minNbOfSymmetricElements) - max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, minNbOfSymmetricElements)), ceil((minArea - maxAreaIgnoringSymmetricAttributes * maxNbOfSymmetricElements) / (*attributeIt)->sizeOfPresentAndPotential())));
 	}
       else
 	{
 	  // TODO: check whether round-off errors are problematic (round instead of ceil?)
-	  *thresholdIt++ += Attribute::noisePerUnit * (IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, minNbOfSymmetricElements) - max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, minNbOfSymmetricElements)), ceil(minArea / ((*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential()) - maxAreaIgnoringSymmetricAttributes)));
+	  *thresholdIt++ += Attribute::noisePerUnit * (IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, minNbOfSymmetricElements) - max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, minNbOfSymmetricElements)), ceil(minArea / (*attributeIt)->sizeOfPresentAndPotential() - maxAreaIgnoringSymmetricAttributes)));
 	}
       ++attributeIt;
     }
@@ -1389,6 +1419,7 @@ const bool Tree::violationAfterAdding(const unsigned int dimensionIdOfElementsSe
     {
       if (measure->violationAfterAdding(dimensionIdOfElementsSetPresent, elementsSetPresent))
 	{
+	  isEnumeratedElementPotentiallyPreventingClosedness = true;
 	  return true;
 	}
     }
@@ -1401,13 +1432,17 @@ const bool Tree::violationAfterRemoving(const unsigned int dimensionIdOfElements
     {
       if (measure->violationAfterRemoving(dimensionIdOfElementsSetAbsent, elementsSetAbsent))
 	{
+	  if (!measure->monotone())
+	    {
+	      isEnumeratedElementPotentiallyPreventingClosedness = true;
+	    }
 	  return true;
 	}
     }
   return false;
 }
 
-const bool Tree::dominated() const
+const bool Tree::dominated()
 {
   return false;
 }
@@ -1497,16 +1532,48 @@ void Tree::setMaxParametersInClique(vector<unsigned int>& parameterVector)
 
 void Tree::peel()
 {
-#ifdef ASSERT
-  for (vector<Attribute*>::const_iterator attributeIt = attributes.begin(); attributeIt != attributes.end(); ++attributeIt)
-    {
-      assertValues((*attributeIt)->presentBegin(), (*attributeIt)->presentEnd(), attributeIt, attributes.begin(), cout);
-      assertValues((*attributeIt)->potentialBegin(), (*attributeIt)->potentialEnd(), attributeIt, attributes.begin(), cout);
-      assertValues((*attributeIt)->absentBegin(), (*attributeIt)->absentEnd(), attributeIt, attributes.begin(), cout);
-    }
-#endif
   const vector<Attribute*>::iterator attributeBegin = attributes.begin();
   const vector<Attribute*>::iterator attributeEnd = attributes.end();
+#ifdef ASSERT
+  for (vector<Attribute*>::const_iterator attributeIt = attributeBegin; attributeIt != attributeEnd; ++attributeIt)
+    {
+      const vector<Value*>::const_iterator end = (*attributeIt)->absentEnd();
+      for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
+	{
+	  unsigned int actualNoise = data->countNoiseOnPresent(attributeIt, **valueIt, attributeBegin);
+	  unsigned int pretendedNoise = (*valueIt)->getPresentNoise();
+	  if (actualNoise != pretendedNoise)
+	    {
+	      (*attributeIt)->printValue(**valueIt, cerr);
+	      cerr << " has " << static_cast<double>(actualNoise) / Attribute::noisePerUnit << " present noise and pretends to have " << static_cast<double>(pretendedNoise) / Attribute::noisePerUnit << endl;
+	    }
+	  actualNoise = data->countNoiseOnPresentAndPotential(attributeIt, **valueIt, attributeBegin);
+	  pretendedNoise = (*valueIt)->getPresentAndPotentialNoise();
+	  if (actualNoise != pretendedNoise)
+	    {
+	      (*attributeIt)->printValue(**valueIt, cerr);
+	      cerr << " has " << static_cast<double>(actualNoise) / Attribute::noisePerUnit << " present and potential noise and pretends to have " << static_cast<double>(pretendedNoise) / Attribute::noisePerUnit << endl;
+	    }
+	}
+    }
+#endif
+  bool unclosedInMetricAttribute = false;
+  for (const Attribute* attribute : attributes)
+    {
+      if (attribute->unclosed(attributeBegin, attributeEnd))
+	{
+	  if (!dynamic_cast<const MetricAttribute*>(attribute))
+	    {
+	      return;
+	    }
+	  unclosedInMetricAttribute = true;
+	}
+    }
+  if (unclosedInMetricAttribute)
+    {
+      isEnumeratedElementPotentiallyPreventingClosedness = true;
+      return;
+    }
   vector<Attribute*>::iterator attributeIt = attributeBegin;
   for (; attributeIt != attributeEnd && (*attributeIt)->finalizable(); ++attributeIt)
     {
@@ -1517,39 +1584,31 @@ void Tree::peel()
 #ifdef DEBUG
       cout << "Every remaining potential value is present!" << endl;
 #endif
+      unsigned int attributeId = 0;
       for (Attribute* attribute : attributes)
 	{
 	  const vector<unsigned int> elementsSetPresent = attribute->finalize();
-	  if (!elementsSetPresent.empty() && violationAfterAdding(attribute->getId(), elementsSetPresent))
+	  if (!elementsSetPresent.empty() && violationAfterAdding(attributeId, elementsSetPresent))
 	    {
 	      return;
 	    }
+	  ++attributeId;
 	}
       if (dominated())
-      	{
-      	  return;
-      	}
+	{
+	  return;
+	}
     }
-  for (attributeIt = attributeBegin; attributeIt != attributeEnd && (*attributeIt)->closed(attributeBegin, attributeEnd); ++attributeIt)
-    {
-    }
-  if (attributeIt != attributeEnd)
-    {
-      return;
-    }
-  // Not a leaf
 #ifdef DEBUG
   cout << "Node after:" << endl;
   printNode(cout);
   cout << endl;
 #endif
-  // Choose the next value to peel
-  vector<Attribute*>::iterator attributeToPeelIt = attributeBegin;
-  for (attributeIt = attributeToPeelIt; attributeIt != attributeEnd && (*attributeIt)->potentialEmpty(); ++attributeIt)
+  attributeIt = attributeBegin;
+  for (attributeIt = attributeBegin; attributeIt != attributeEnd && (*attributeIt)->potentialEmpty(); ++attributeIt)
     {
-      ++attributeToPeelIt;
     }
-  if (attributeToPeelIt == attributeEnd) // cannot be integrated to the same last test because of rounding errors
+  if (attributeIt == attributeEnd) // cannot be integrated to the same last test because of rounding errors
     {
 #ifdef DEBUG
       cout << "*********************** closed ET-" << attributes.size() << "-set ************************" << endl << *this << endl << "****************************************************************" << endl;
@@ -1558,20 +1617,18 @@ void Tree::peel()
       ++nbOfClosedNSets;
 #endif
       validPattern();
+      isEnumeratedElementPotentiallyPreventingClosedness = true;
       return;
     }
+  // Not a leaf
+  // Choose the next value to peel
+  vector<Attribute*>::iterator attributeToPeelIt = attributeIt;
   double maxAppeal = (*attributeIt)->getAppeal(attributeBegin, attributeEnd);
-#ifdef VERBOSE_DIM_CHOICE
-  cout << "Appeal of attribute " << internal2ExternalAttributeOrder[(*attributeIt)->getId()] << ": " << maxAppeal << endl;
-#endif
   while (++attributeIt != attributeEnd)
     {
       if (!(*attributeIt)->potentialEmpty())
 	{
 	  double appeal = (*attributeIt)->getAppeal(attributeBegin, attributeEnd);
-#ifdef VERBOSE_DIM_CHOICE
-	  cout << "Appeal of attribute " << internal2ExternalAttributeOrder[(*attributeIt)->getId()] << ": " << appeal << endl;
-#endif
 	  if (appeal > maxAppeal)
 	    {
 	      attributeToPeelIt = attributeIt;
@@ -1579,17 +1636,34 @@ void Tree::peel()
 	    }
 	}
     }
-  vector<Value*>::iterator valueItToPeel((*attributeToPeelIt)->valueItToEnumerate());
+  (*attributeToPeelIt)->chooseValue();
   // Construct the subtrees
 #ifdef DEBUG
+  const Value& enumeratedValue = (*attributeToPeelIt)->getChosenValue();
   cout << "Left child: ";
-  (*attributeToPeelIt)->printValue(**valueItToPeel, cout);
-  cout << " set present." << endl << "Node before:" << endl;
+  (*attributeToPeelIt)->printValue(enumeratedValue, cout);
+  cout << " set present" << endl << "Node before:" << endl;
   printNode(cout);
   cout << endl;
 #endif
-  leftSubtree((*attributeToPeelIt)->getId(), (*valueItToPeel)->getOriginalId());
-  rightSubtree(attributeToPeelIt, valueItToPeel);
+  const bool isLastEnumeratedElementPotentiallyPreventingClosedness = leftSubtree(**attributeToPeelIt);
+#ifdef DEBUG
+  cout << "Right child: ";
+  (*attributeToPeelIt)->printValue(enumeratedValue, cout);
+  cout << " set absent";
+  if (!isLastEnumeratedElementPotentiallyPreventingClosedness)
+    {
+      cout << " and cannot prevent the closedness of any future pattern";
+    }
+  cout << endl << "Node before:" << endl;
+  printNode(cout);
+  cout << endl;
+#endif
+  rightSubtree(**attributeToPeelIt, isLastEnumeratedElementPotentiallyPreventingClosedness);
+  if (isLastEnumeratedElementPotentiallyPreventingClosedness)
+    {
+      isEnumeratedElementPotentiallyPreventingClosedness = true;
+    }
 }
 
 ostream& operator<<(ostream& out, const Tree& node)
@@ -1641,7 +1715,7 @@ void Tree::printNode(ostream& out) const
 	}
       attributes[internalAttributeId]->printPotential(out);
     }
-  out << endl << "  absent by enumeration: ";
+  out << endl << "  possible extensions: ";
   isFirstAttribute = true;
   for (const unsigned int internalAttributeId : external2InternalAttributeOrder)
     {
@@ -1654,17 +1728,6 @@ void Tree::printNode(ostream& out) const
 	  out << outputDimensionSeparator;
 	}
       attributes[internalAttributeId]->printAbsent(out);
-    }
-}
-#endif
-
-#ifdef ASSERT
-void Tree::assertValues(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const vector<Attribute*>::const_iterator attributeIt, const vector<Attribute*>::const_iterator attributeBegin, ostream& out) const
-{
-  for (vector<Value*>::const_iterator valueIt = valueBegin; valueIt != valueEnd; ++valueIt)
-    {
-      (*attributeIt)->printValue(**valueIt, out);
-      out << " has:" << endl << "  " << data->countNoiseOnPresent(attributeIt, **valueIt, attributeBegin) << " present noise and pretends to have " << (*valueIt)->getPresentNoise() << endl << "  " << data->countNoiseOnPresentAndPotential(attributeIt, **valueIt, attributeBegin) << " present and potential noise and pretends to have " << (*valueIt)->getPresentAndPotentialNoise() << endl;
     }
 }
 #endif

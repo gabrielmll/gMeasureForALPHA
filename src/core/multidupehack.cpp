@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -24,6 +24,14 @@ template<typename T> vector<T> getVectorFromString(const string& str)
     {
       tokens.push_back(token);
     }
+  return tokens;
+}
+
+template<typename T> vector<T> getSetFromString(const string& str)
+{
+  vector<T> tokens = getVectorFromString<T>(str);
+  sort(tokens.begin(), tokens.end());
+  unique(tokens.begin(), tokens.end());
   return tokens;
 }
 
@@ -60,9 +68,10 @@ int main(int argc, char* argv[])
       vector<double> epsilonVector;
       vector<unsigned int> cliqueDimensions;
       vector<double> tauVector;
+      vector<unsigned int> unclosedDimensions;
       vector<unsigned int> minSizes;
       vector<unsigned int> maxSizes;
-      int minArea = 0;
+      int minArea = 1;
       int maxArea = -1;
       vector<unsigned int> maximizedSizeDimensions;
       vector<unsigned int> minimizedSizeDimensions;
@@ -70,6 +79,10 @@ int main(int argc, char* argv[])
       vector<string> groupFileNames;
       string groupElementSeparator;
       string groupDimensionElementsSeparator;
+      string pointElementSeparator;
+      string pointDimensionSeparator;
+      string valueElementSeparator;
+      string valueDimensionSeparator;
       vector<unsigned int> groupMinSizes;
       vector<unsigned int> groupMaxSizes;
       vector<vector<float>> groupMinRatios;
@@ -86,9 +99,13 @@ int main(int argc, char* argv[])
       vector<vector<float>> groupMaximizedForces;
       vector<vector<float>> groupMaximizedYulesQs;
       vector<vector<float>> groupMaximizedYulesYs;
+      string utilityValueFileName;
+      float minUtility = 0;
+      string slopePointFileName;
+      float minSlope = 0;
       options_description generic("Generic options");
       generic.add_options()
-	("help,h", value<string>(), "display help section whose name (\"size-constraints\", \"group-constraints\" or \"io\") starts with the string in argument")
+	("help,h", value<string>(), "display help section whose name (\"size-constraints\", \"group-constraints\", \"value-constraints\", \"point-constraints\" or \"io\") starts with the string in argument")
 	("version,V", "display version information and exit")
 	("opt", value<string>(&optionFileName), "set the option file name (by default [data-file].opt if present)");
       options_description basicConfig("Basic configuration (on the command line or in the option file)");
@@ -96,17 +113,19 @@ int main(int argc, char* argv[])
 	("epsilon,e", value<string>(), "set noise tolerance bounds for elements in each attribute (by default 0 for every attribute)")
 	("clique,c", value<string>(), "set attributes on which closed cliques are searched (0 being the first attribute)")
 	("tau,t", value<string>(), "set maximal differences between two contiguous elements in numerical attributes or 0 for infinity/non-numerical attribute (by default 0 for every attribute)")
-	("reduction,r", "do not compute closed ET-n-sets, only output the input data without the elements that cannot be in any closed ET-n-sets given the constraints")
+	("reduction,r", "do not compute closed ET-n-sets, only output the input data without the elements that cannot be in any closed ET-n-sets given the size constraints")
 	("ha", value<int>(&maximalNbOfClosedNSetsForAgglomeration), "hierarchically agglomerate the less noisy closed ET-n-sets (maximal quantity in argument) and output the relevant agglomerates, more relevant first")
+	("unclosed,u", value<string>(), "set attributes in which the computed ET-n-sets need not be closed")
 	("density,d", value<float>()->default_value(1), "set threshold to trigger a dense storage of the data (0 for a completely dense storage, 1 for a sparse storage)")
 	("large,l", "quick computation of closed ET-n-sets that are large in all the dimensions (longer extractions when other closed ET-n-sets are valid)")
+	("shift", value<double>()->default_value(1), "set multiplier of the dataset density as a similarity shift for agglomeration")
 	("out,o", value<string>(&outputFileName), "set output file name (by default [data-file].out if closed ET-net sets are computed, [data-file].red if the input data is only reduced with option --reduction)")
 	("psky", "print pattern skyline whenever refined");
       options_description sizeConstraints("Size constraints (on the command line or in the option file)");
       sizeConstraints.add_options()
 	("sizes,s", value<string>(), "set minimal sizes in each attribute of any computed closed ET-n-set (by default 0 for every attribute)")
 	("Sizes,S", value<string>(), "set maximal sizes in each attribute of any computed closed ET-n-set (unconstrained by default)")
-	("area,a", value<int>(&minArea), "set minimal area of any computed closed ET-n-set (by default 0)")
+	("area,a", value<int>(&minArea), "set minimal area of any computed closed ET-n-set (by default 1)")
 	("Area,A", value<int>(&maxArea), "set maximal area of any computed closed ET-n-set (unconstrained by default)")
 	("sky-s", value<string>(), "set attributes whose sizes are to be maximized (0 being the first attribute)")
 	("sky-S", value<string>(), "set attributes whose sizes are to be minimized (0 being the first attribute)")
@@ -131,16 +150,30 @@ int main(int argc, char* argv[])
 	("sky-gf", value<string>(), "set file name specifying the pairs of groups whose forces of their numbers of elements are to be maximized (0 indicates no maximization, another number indicates a maximization)")
 	("sky-gyq", value<string>(), "set file name specifying the pairs of groups whose Yule's Q of their numbers of elements are to be maximized (0 indicates no maximization, another number indicates a maximization)")
 	("sky-gyy", value<string>(), "set file name specifying the pairs of groups whose Yule's Y of their numbers of elements are to be maximized (0 indicates no maximization, another number indicates a maximization)");
+      options_description valueConstraints("Value constraints (on the command line or in the option file)");
+      valueConstraints.add_options()
+	("utility-values,v", value<string>(&utilityValueFileName), "set file name specifying, first, the ids of the k involved attributes (0 being the first attribute) and, then, k-tuples followed with positive values")
+	("utility", value<float>(&minUtility), "set minimal sum of the values specified with option --utility-values and whose associated tuples can be made from a closed ET-n-set (0 by default)")
+	("sky-utility", "maximize utility");
+      options_description pointConstraints("Point constraints (on the command line or in the option file)");
+      pointConstraints.add_options()
+	("slope-points", value<string>(&slopePointFileName), "set file name specifying, first, the ids of the k involved attributes (0 being the first attribute) and, then, k-tuples followed with 2D points")
+	("slope", value<float>(&minSlope), "set minimal slope of the line fitting the points specified with option --slope-points and whose associated tuples can be made from a closed ET-n-set (unconstrained by default if --sky-slope in use, otherwise 0)")
+	("sky-slope", "maximize slope");
       options_description io("Input/Output format (on the command line or in the option file)");
       io.add_options()
 	("ies", value<string>()->default_value(","), "set any character separating two elements in input data")
 	("ids", value<string>()->default_value(" "), "set any character separating two attributes in input data")
 	("ges", value<string>(&groupElementSeparator), "set any character separating two elements in a group (by default same as --ies)")
 	("gds", value<string>(&groupDimensionElementsSeparator), "set any character separating the dimension from its elements in a group (by default same as --ids)")
+	("ves", value<string>(&valueElementSeparator), "set any character separating two elements in a value file (by default same as --ies)")
+	("vds", value<string>(&valueDimensionSeparator), "set any character separating the dimensions in a value file (by default same as --ids)")
+	("pes", value<string>(&pointElementSeparator), "set any character separating two elements in a point file (by default same as --ies)")
+	("pds", value<string>(&pointDimensionSeparator), "set any character separating the dimensions in a point file (by default same as --ids)")
 	("oes", value<string>()->default_value(","), "set string separating two elements in output data")
 	("ods", value<string>()->default_value(" "), "set string separating two attributes in output data")
 	("empty", value<string>()->default_value("ø"), " set string specifying an empty set in output data")
-	("pn", "print noise on every element in output data; relative noise with --ha, absolute noise otherwise unless sky-patterns are searched (--pn has no effect)")
+	("pn", "print absoliute noise on every element in output data unless sky-patterns are searched or --ha used (--pn has no effect)")
 	("ens", value<string>()->default_value("#"), "set string separating every element from the noise on it")
 	("ps", "print sizes in output data")
 	("css", value<string>()->default_value(" : "), "set string separating closed ET-n-sets from sizes in output data")
@@ -153,7 +186,7 @@ int main(int argc, char* argv[])
       positional_options_description p;
       p.add("data-file", -1);
       options_description commandLineOptions;
-      commandLineOptions.add(generic).add(basicConfig).add(sizeConstraints).add(groupConstraints).add(io).add(hidden);
+      commandLineOptions.add(generic).add(basicConfig).add(sizeConstraints).add(groupConstraints).add(valueConstraints).add(pointConstraints).add(io).add(hidden);
       variables_map vm;
       store(command_line_parser(argc, argv).options(commandLineOptions).positional(p).run(), vm);
       notify(vm);
@@ -170,6 +203,16 @@ int main(int argc, char* argv[])
 	      cout << groupConstraints;
 	      return EX_OK;
 	    }
+	  if (helpSection == string("value-constraints").substr(0, helpSection.size()))
+	    {
+	      cout << valueConstraints;
+	      return EX_OK;
+	    }
+	  if (helpSection == string("point-constraints").substr(0, helpSection.size()))
+	    {
+	      cout << pointConstraints;
+	      return EX_OK;
+	    }
 	  if (helpSection == string("io").substr(0, helpSection.size()))
 	    {
 	      cout << io;
@@ -180,7 +223,7 @@ int main(int argc, char* argv[])
 	}
       if (vm.count("version"))
 	{
-	  cout << "multidupehack version 0.11.8" << endl;
+	  cout << "multidupehack version 0.15.6" << endl;
 	  return EX_OK;
 	}
       if (!vm.count("data-file"))
@@ -203,23 +246,17 @@ int main(int argc, char* argv[])
 	  optionFileName = vm["data-file"].as<string>() + ".opt";
 	}
       options_description config;
-      config.add(basicConfig).add(sizeConstraints).add(groupConstraints).add(io).add(hidden);
+      config.add(basicConfig).add(sizeConstraints).add(groupConstraints).add(valueConstraints).add(pointConstraints).add(io).add(hidden);
       optionFile.open(optionFileName.c_str());
       store(parse_config_file(optionFile, config), vm);
       notify(vm);
       optionFile.close();
       if (vm.count("clique"))
 	{
-	  cliqueDimensions = getVectorFromString<unsigned int>(vm["clique"].as<string>());
+	  cliqueDimensions = getSetFromString<unsigned int>(vm["clique"].as<string>());
 	  if (cliqueDimensions.size() != 2)
 	    {
-	      throw UsageException("clique option should provide two attributes ids!");
-	    }
-	  if (cliqueDimensions.back() < cliqueDimensions.front())
-	    {
-	      const unsigned int tmp = cliqueDimensions.front();
-	      cliqueDimensions.front() = cliqueDimensions.back();
-	      cliqueDimensions.back() = tmp;
+	      throw UsageException("clique option should provide two different attributes ids!");
 	    }
 	}
       if (vm.count("ha") && maximalNbOfClosedNSetsForAgglomeration < 1)
@@ -248,6 +285,10 @@ int main(int argc, char* argv[])
       if (vm.count("tau"))
 	{
 	  tauVector = getVectorFromString<double>(vm["tau"].as<string>());
+	}
+      if (vm.count("unclosed"))
+	{
+	  unclosedDimensions = getVectorFromString<unsigned int>(vm["unclosed"].as<string>());
 	}
       if (vm.count("Sizes"))
 	{
@@ -334,6 +375,22 @@ int main(int argc, char* argv[])
 	{
 	  groupDimensionElementsSeparator = vm["ids"].as<string>();
 	}
+      if (!vm.count("ves"))
+	{
+	  valueElementSeparator = vm["ies"].as<string>();
+	}
+      if (!vm.count("vds"))
+	{
+	  valueDimensionSeparator = vm["ids"].as<string>();
+	}
+      if (!vm.count("pes"))
+	{
+	  pointElementSeparator = vm["ies"].as<string>();
+	}
+      if (!vm.count("pds"))
+	{
+	  pointDimensionSeparator = vm["ids"].as<string>();
+	}
       if (!vm.count("out"))
 	{
 	  if (vm.count("reduction"))
@@ -345,36 +402,31 @@ int main(int argc, char* argv[])
 	      outputFileName = vm["data-file"].as<string>() + ".out";
 	    }
 	}
-      bool isSkyMining = false;
       if (vm.count("sky-s"))
 	{
-	  maximizedSizeDimensions = getVectorFromString<unsigned int>(vm["sky-s"].as<string>());
-	  isSkyMining = true;
+	  maximizedSizeDimensions = getSetFromString<unsigned int>(vm["sky-s"].as<string>());
 	}
       if (vm.count("sky-S"))
 	{
-	  minimizedSizeDimensions = getVectorFromString<unsigned int>(vm["sky-S"].as<string>());
-	  isSkyMining = true;
+	  minimizedSizeDimensions = getSetFromString<unsigned int>(vm["sky-S"].as<string>());
 	}
       if (vm.count("sky-gs"))
 	{
-	  groupMaximizedSizes = getVectorFromString<unsigned int>(vm["sky-gs"].as<string>());
+	  groupMaximizedSizes = getSetFromString<unsigned int>(vm["sky-gs"].as<string>());
 	  sort(groupMaximizedSizes.begin(), groupMaximizedSizes.end());
 	  if (groupMaximizedSizes.back() >= groupFileNames.size())
 	    {
 	      throw UsageException(("sky-gs option should provide group ids between 0 and " + lexical_cast<string>(groupFileNames.size() - 1)).c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gS"))
 	{
-	  groupMinimizedSizes = getVectorFromString<unsigned int>(vm["sky-gS"].as<string>());
+	  groupMinimizedSizes = getSetFromString<unsigned int>(vm["sky-gS"].as<string>());
 	  sort(groupMinimizedSizes.begin(), groupMinimizedSizes.end());
 	  if (groupMinimizedSizes.back() >= groupFileNames.size())
 	    {
 	      throw UsageException(("sky-gS option should provide group ids between 0 and " + lexical_cast<string>(groupFileNames.size() - 1)).c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gr"))
 	{
@@ -383,7 +435,6 @@ int main(int argc, char* argv[])
 	    {
 	      throw UsageException(("file set with sky-gr option has " + lexical_cast<string>(groupMaximizedRatios.size()) + " non-empty rows but groups option only defines " + lexical_cast<string>(groupFileNames.size()) + " groups!").c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gps"))
 	{
@@ -392,7 +443,6 @@ int main(int argc, char* argv[])
 	    {
 	      throw UsageException(("file set with sky-gps option has " + lexical_cast<string>(groupMaximizedPiatetskyShapiros.size()) + " non-empty rows but groups option only defines " + lexical_cast<string>(groupFileNames.size()) + " groups!").c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gl"))
 	{
@@ -401,7 +451,6 @@ int main(int argc, char* argv[])
 	    {
 	      throw UsageException(("file set with sky-gl option has " + lexical_cast<string>(groupMaximizedLeverages.size()) + " non-empty rows but groups option only defines " + lexical_cast<string>(groupFileNames.size()) + " groups!").c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gf"))
 	{
@@ -410,7 +459,6 @@ int main(int argc, char* argv[])
 	    {
 	      throw UsageException(("file set with sky-gf option has " + lexical_cast<string>(groupMaximizedForces.size()) + " non-empty rows but groups option only defines " + lexical_cast<string>(groupFileNames.size()) + " groups!").c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gyq"))
 	{
@@ -419,7 +467,6 @@ int main(int argc, char* argv[])
 	    {
 	      throw UsageException(("file set with sky-gyq option has " + lexical_cast<string>(groupMaximizedYulesQs.size()) + " non-empty rows but groups option only defines " + lexical_cast<string>(groupFileNames.size()) + " groups!").c_str());
 	    }
-	  isSkyMining = true;
 	}
       if (vm.count("sky-gyy"))
 	{
@@ -428,14 +475,46 @@ int main(int argc, char* argv[])
 	    {
 	      throw UsageException(("file set with sky-gyy option has " + lexical_cast<string>(groupMaximizedYulesYs.size()) + " non-empty rows but groups option only defines " + lexical_cast<string>(groupFileNames.size()) + " groups!").c_str());
 	    }
-	  isSkyMining = true;
 	}
-      if (isSkyMining || vm.count("sky-a") || vm.count("sky-A"))
+      if (utilityValueFileName.empty())
 	{
-	  root = new SkyPatternTree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfClosedNSetsForAgglomeration, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"), vm.count("psky"));
+	  if (vm.count("utility"))
+	    {
+	      throw UsageException("utility option without utility-values option!");
+	    }
+	  if (vm.count("sky-utility"))
+	    {
+	      throw UsageException("sky-utility option without utility-values option!");
+	    }
+	}
+      if (vm.count("utility") && minUtility <= 0)
+	{
+	  throw UsageException("utility option should provide a strictly positive float!");
+	}
+      if (slopePointFileName.empty())
+	{
+	  if (vm.count("slope"))
+	    {
+	      throw UsageException("slope option without slope-points option!");
+	    }
+	  if (vm.count("sky-slope"))
+	    {
+	      throw UsageException("sky-slope option without slope-points option!");
+	    }
+	}
+      if (vm.count("sky-slope"))
+	{
+	  if (!vm.count("slope"))
+	    {
+	      minSlope = -numeric_limits<float>::infinity();
+	    }
+	}
+      if (vm.count("sky-s") || vm.count("sky-S") || vm.count("sky-a") || vm.count("sky-A") || vm.count("sky-gs") || vm.count("sky-gS") || vm.count("sky-gr") || vm.count("sky-gps") || vm.count("sky-gl") || vm.count("sky-gf") || vm.count("sky-gyq") || vm.count("sky-gyy") || vm.count("sky-utility") || vm.count("sky-slope"))
+	{
+	  root = new SkyPatternTree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), vm["shift"].as<double>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfClosedNSetsForAgglomeration, unclosedDimensions, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"), vm.count("psky"));
 	  try
 	    {
-	      static_cast<SkyPatternTree*>(root)->initMeasures(maxSizes, maxArea, maximizedSizeDimensions, minimizedSizeDimensions, vm.count("sky-a"), vm.count("sky-A"), groupFileNames, groupMinSizes, groupMaxSizes, groupMinRatios, groupMinPiatetskyShapiros, groupMinLeverages, groupMinForces, groupMinYulesQs, groupMinYulesYs, groupElementSeparator.c_str(), groupDimensionElementsSeparator.c_str(), groupMaximizedSizes, groupMinimizedSizes, groupMaximizedRatios, groupMaximizedPiatetskyShapiros, groupMaximizedLeverages, groupMaximizedForces, groupMaximizedYulesQs, groupMaximizedYulesYs);
+	      static_cast<SkyPatternTree*>(root)->initMeasures(maxSizes, maxArea, maximizedSizeDimensions, minimizedSizeDimensions, vm.count("sky-a"), vm.count("sky-A"), groupFileNames, groupMinSizes, groupMaxSizes, groupMinRatios, groupMinPiatetskyShapiros, groupMinLeverages, groupMinForces, groupMinYulesQs, groupMinYulesYs, groupElementSeparator.c_str(), groupDimensionElementsSeparator.c_str(), groupMaximizedSizes, groupMinimizedSizes, groupMaximizedRatios, groupMaximizedPiatetskyShapiros, groupMaximizedLeverages, groupMaximizedForces, groupMaximizedYulesQs, groupMaximizedYulesYs, utilityValueFileName.c_str(), minUtility, valueElementSeparator.c_str(), valueDimensionSeparator.c_str(), vm.count("sky-utility"), slopePointFileName.c_str(), minSlope, pointElementSeparator.c_str(), pointDimensionSeparator.c_str(), vm.count("sky-slope"), vm["density"].as<float>());
 	    }
 	  catch (std::exception& e)
 	    {
@@ -445,10 +524,10 @@ int main(int argc, char* argv[])
 	}
       else
 	{
-	  root = new Tree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfClosedNSetsForAgglomeration, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"));
+	  root = new Tree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), vm["shift"].as<double>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfClosedNSetsForAgglomeration, unclosedDimensions, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"));
 	  try
 	    {
-	      root->initMeasures(maxSizes, maxArea, groupFileNames, groupMinSizes, groupMaxSizes, groupMinRatios, groupMinPiatetskyShapiros, groupMinLeverages, groupMinForces, groupMinYulesQs, groupMinYulesYs, groupElementSeparator.c_str(), groupDimensionElementsSeparator.c_str());
+	      root->initMeasures(maxSizes, maxArea, groupFileNames, groupMinSizes, groupMaxSizes, groupMinRatios, groupMinPiatetskyShapiros, groupMinLeverages, groupMinForces, groupMinYulesQs, groupMinYulesYs, groupElementSeparator.c_str(), groupDimensionElementsSeparator.c_str(), utilityValueFileName.c_str(), minUtility, valueElementSeparator.c_str(), valueDimensionSeparator.c_str(), slopePointFileName.c_str(), minSlope, pointElementSeparator.c_str(), pointDimensionSeparator.c_str(), vm["density"].as<float>());
 	    }
 	  catch (std::exception& e)
 	    {
@@ -478,8 +557,7 @@ int main(int argc, char* argv[])
       cerr << e.what() << endl;
       return EX_DATAERR;
     }
-  root->peel();
-  root->terminate();
+  root->mine();
   delete root;
   return EX_OK;
 }

@@ -64,6 +64,11 @@ void NoisyTupleFileReader::init()
     }
 }
 
+const vector<string>& NoisyTupleFileReader::getIds2Labels(const unsigned int dimensionId) const
+{
+  return ids2Labels[dimensionId];
+}
+
 vector<unsigned int> NoisyTupleFileReader::getCardinalities() const
 {
   vector<unsigned int> cardinalities;
@@ -173,24 +178,42 @@ void NoisyTupleFileReader::printTuplesInFirstDimensionHyperplane(ostream& out, c
     }
 }
 
-string NoisyTupleFileReader::captureLabel(const unsigned int dimensionId, const unsigned int elementId)
+vector<string> NoisyTupleFileReader::setNewIdsAndGetLabels(const unsigned int dimensionId, const vector<unsigned int>& oldIds2NewIds, const unsigned int nbOfValidLabels)
 {
-  if (ids2Labels[dimensionId].empty())
+  vector<string> labels(nbOfValidLabels);
+  for (pair<const string, unsigned int>& label2Id : labels2Ids[dimensionId])
     {
-      return move(symIds2Labels[elementId]);
+      label2Id.second = oldIds2NewIds[label2Id.second];
+      if (label2Id.second != numeric_limits<unsigned int>::max())
+	{
+	  labels[label2Id.second] = label2Id.first;
+	}
     }
-  return move(ids2Labels[dimensionId][elementId]);
+  return labels;
 }
 
-vector<unordered_map<string, unsigned int>> NoisyTupleFileReader::captureLabels2Ids()
+vector<string> NoisyTupleFileReader::setNewIdsAndGetSymmetricLabels(const vector<unsigned int>& oldIds2NewIds, const unsigned int nbOfValidLabels)
 {
-  return move(labels2Ids);
+  vector<string> labels(nbOfValidLabels);
+  for (pair<const string, unsigned int>& label2Id : symLabels2Ids)
+    {
+      label2Id.second = oldIds2NewIds[label2Id.second];
+      if (label2Id.second != numeric_limits<unsigned int>::max())
+	{
+	  labels[label2Id.second] = label2Id.first;
+	}
+    }
+  return labels;
 }
 
-vector<unordered_map<string, unsigned int>> NoisyTupleFileReader::captureLabels2Ids(const unsigned int firstSymmetricDimensionId)
+unordered_map<string, unsigned int>&& NoisyTupleFileReader::captureLabels2Ids(const unsigned int dimensionId)
 {
-  labels2Ids[firstSymmetricDimensionId] = move(symLabels2Ids);
-  return move(labels2Ids);
+  return move(labels2Ids[dimensionId]);
+}
+
+unordered_map<string, unsigned int>&& NoisyTupleFileReader::captureSymmetricLabels2Ids()
+{
+  return move(symLabels2Ids);
 }
 
 void NoisyTupleFileReader::nextNSet()

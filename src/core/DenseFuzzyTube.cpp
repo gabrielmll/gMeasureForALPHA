@@ -1,4 +1,4 @@
-// Copyright 2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -41,7 +41,7 @@ void DenseFuzzyTube::print(vector<unsigned int>& prefix, ostream& out) const
     }
 }
 
-const bool DenseFuzzyTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<unordered_map<unsigned int, unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
+const bool DenseFuzzyTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<vector<unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
 {
   const unsigned int element = oldIds2NewIdsIt->at(tuple[*attributeIdIt]);
   (*attributeIt)->substractPotentialNoise(element, membership);
@@ -52,42 +52,45 @@ const bool DenseFuzzyTube::setTuple(const vector<unsigned int>& tuple, const uns
   tube[element] = Attribute::noisePerUnit - membership;
   return false;
 }
+
 const unsigned int DenseFuzzyTube::setSelfLoopsInSymmetricAttribute(const unsigned int hyperplaneId, const unsigned int lastSymmetricAttributeId, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, const unsigned int dimensionId)
 {
   // Never called
   return 0;
 }
 
-const unsigned int DenseFuzzyTube::noiseOnValues(const vector<Attribute*>::const_iterator attributeIt, const vector<unsigned int>& valueOriginalIds) const
+const unsigned int DenseFuzzyTube::noiseOnValues(const vector<Attribute*>::const_iterator attributeIt, const vector<unsigned int>& valueDataIds) const
 {
   unsigned int oldNoise = 0;
-  for (const unsigned int valueOriginalId : valueOriginalIds)
+  for (const unsigned int valueDataId : valueDataIds)
     {
-      oldNoise += tube[valueOriginalId];
+      oldNoise += tube[valueDataId];
     }
   return oldNoise;
 }
 
-const unsigned int DenseFuzzyTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseFuzzyTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   // *this necessarily relates to the present attribute
-  return tube[presentValue.getOriginalId()];
+  return tube[(*attributeIt)->getChosenValue().getDataId()];
 }
 
-const unsigned int DenseFuzzyTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
+const unsigned int DenseFuzzyTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   // *this necessarily relates to the present attribute
-  const unsigned int noise = tube[presentValue.getOriginalId()];
-  (*potentialOrAbsentValueIntersectionIt)[presentValue.getId()] += noise;
+  const Value& presentValue = (*attributeIt)->getChosenValue();
+  const unsigned int noise = tube[presentValue.getDataId()];
+  (*potentialOrAbsentValueIntersectionIt)[presentValue.getIntersectionId()] += noise;
   return noise;
 }
 
 const unsigned int DenseFuzzyTube::presentFixPresentValuesAfterPresentValueMet(Attribute& currentAttribute) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
+      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getDataId()];
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
       newNoise += newNoiseInHyperplane;
     }
@@ -97,22 +100,24 @@ const unsigned int DenseFuzzyTube::presentFixPresentValuesAfterPresentValueMet(A
 const unsigned int DenseFuzzyTube::presentFixPresentValuesAfterPresentValueMetAndPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
-      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getId()] += newNoiseInHyperplane;
+      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getDataId()];
+      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getIntersectionId()] += newNoiseInHyperplane;
       newNoise += newNoiseInHyperplane;
     }
   return newNoise;
 }
 
-void DenseFuzzyTube::presentFixPotentialValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void DenseFuzzyTube::presentFixPotentialOrAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
+      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getDataId()];
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
@@ -120,13 +125,15 @@ void DenseFuzzyTube::presentFixPotentialValuesAfterPresentValueMet(Attribute& cu
     }
 }
 
-void DenseFuzzyTube::presentFixAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void DenseFuzzyTube::presentFixPotentialOrAbsentValuesInSecondSymmetricAttribute(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  // The first potential value actually is the value set present and there is no noise to be found at the insection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); ++valueIt != end; )
     {
-      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
+      const unsigned int newNoiseInHyperplane = tube[(*valueIt)->getDataId()];
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
@@ -134,26 +141,27 @@ void DenseFuzzyTube::presentFixAbsentValuesAfterPresentValueMet(Attribute& curre
     }
 }
 
-const unsigned int DenseFuzzyTube::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseFuzzyTube::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   // *this necessarily relates to the absent attribute
-  return noiseOnValues(absentAttributeIt, absentValueOriginalIds);
+  return noiseOnValues(absentAttributeIt, absentValueDataIds);
 }
 
-const unsigned int DenseFuzzyTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int DenseFuzzyTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   // *this necessarily relates to the absent attribute
-  return noiseOnValues(absentAttributeIt, absentValueOriginalIds);
+  return noiseOnValues(absentAttributeIt, absentValueDataIds);
 }
 
-const unsigned int DenseFuzzyTube::absentFixPresentValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseFuzzyTube::absentFixPresentOrPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -163,14 +171,28 @@ const unsigned int DenseFuzzyTube::absentFixPresentValuesAfterAbsentValuesMet(At
   return oldNoise;
 }
 
-const unsigned int DenseFuzzyTube::absentFixPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseFuzzyTube::absentFixPresentOrPotentialValuesInSecondSymmetricAttribute(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
+      for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	{
+	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
+	}
+      oldNoise += oldNoiseInHyperplane;
+    }
+  end = currentAttribute.irrelevantEnd();
+  while (++valueIt != end)  
+    {
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
+      (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -180,25 +202,35 @@ const unsigned int DenseFuzzyTube::absentFixPotentialValuesAfterAbsentValuesMet(
   return oldNoise;
 }
 
-const unsigned int DenseFuzzyTube::absentFixPresentValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int DenseFuzzyTube::absentFixPresentOrPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
-      (*absentValueIntersectionIt)[(*valueIt)->getId()] -= oldNoiseInHyperplane;
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
       oldNoise += oldNoiseInHyperplane;
     }
   return oldNoise;
 }
 
-const unsigned int DenseFuzzyTube::absentFixPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int DenseFuzzyTube::absentFixPresentOrPotentialValuesInSecondSymmetricAttributeAfterAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
-      (*absentValueIntersectionIt)[(*valueIt)->getId()] -= oldNoiseInHyperplane;
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  end = currentAttribute.irrelevantEnd();
+  while (++valueIt != end)
+    {
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
       oldNoise += oldNoiseInHyperplane;
     }
   return oldNoise;
@@ -206,11 +238,12 @@ const unsigned int DenseFuzzyTube::absentFixPotentialValuesAfterAbsentValuesMetA
 
 void DenseFuzzyTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getOriginalId()];
+      const unsigned int oldNoiseInHyperplane = tube[(*valueIt)->getDataId()];
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -218,34 +251,29 @@ void DenseFuzzyTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& curren
     }
 }
 
-const unsigned int DenseFuzzyTube::countNoise(const vector<vector<Element>>::iterator dimensionIt) const
+const unsigned int DenseFuzzyTube::countNoise(const vector<vector<unsigned int>>::const_iterator dimensionIt) const
 {
   unsigned int noise = 0;
-  for (Element& element : *dimensionIt)
+  for (const unsigned int id : *dimensionIt)
     {
-      const unsigned int noiseInHyperplane = tube[element.getId()];
-      noise += noiseInHyperplane;
-      element.addNoise(noiseInHyperplane);
+      noise += tube[id];
     }
   return noise;
 }
 
-pair<unsigned int, const bool> DenseFuzzyTube::countNoiseUpToThresholds(const vector<unsigned int>::const_iterator noiseThresholdIt, const vector<vector<Element>>::iterator dimensionIt, const vector<vector<Element>::iterator>::iterator tupleIt) const
+const bool DenseFuzzyTube::decreaseMembershipDownToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
 {
-  unsigned int noise = 0;
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      const unsigned int noiseInHyperplane = tube[(*tupleIt)->getId()];
-      noise += noiseInHyperplane;
-      (*tupleIt)->addNoise(noiseInHyperplane);
-      if ((*tupleIt)->getNoise() > *noiseThresholdIt)
+      membershipSum -=tube[(*tupleIt)->getId()];
+      if (membershipSum < membershipThreshold)
 	{
 	  ++*tupleIt;
-	  return pair<unsigned int, const bool>(noise, true);
+	  return true;
 	}
     }
   *tupleIt = dimensionIt->begin();
-  return pair<unsigned int, const bool>(noise, false);
+  return false;
 }
 
 #ifdef ASSERT
@@ -253,12 +281,13 @@ const unsigned int DenseFuzzyTube::countNoiseOnPresent(const vector<Attribute*>:
 {
   if (attributeIt == valueAttributeIt)
     {
-      return tube[value.getOriginalId()];
+      return tube[value.getDataId()];
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  const vector<Value*>::const_iterator end = (*attributeIt)->presentEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      noise += tube[(*valueIt)->getOriginalId()];
+      noise += tube[(*valueIt)->getDataId()];
     }
   return noise;
 }
@@ -267,16 +296,13 @@ const unsigned int DenseFuzzyTube::countNoiseOnPresentAndPotential(const vector<
 {
   if (attributeIt == valueAttributeIt)
     {
-      return tube[value.getOriginalId()];
+      return tube[value.getDataId()];
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  vector<Value*>::const_iterator end = (*attributeIt)->irrelevantEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      noise += tube[(*valueIt)->getOriginalId()];
-    }
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->potentialBegin(); valueIt != (*attributeIt)->potentialEnd(); ++valueIt)
-    {
-      noise += tube[(*valueIt)->getOriginalId()];
+      noise += tube[(*valueIt)->getDataId()];
     }
   return noise;
 }

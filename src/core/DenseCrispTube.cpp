@@ -1,4 +1,4 @@
-// Copyright 2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -42,7 +42,7 @@ void DenseCrispTube::print(vector<unsigned int>& prefix, ostream& out) const
     }
 }
 
-const bool DenseCrispTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<unordered_map<unsigned int, unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
+const bool DenseCrispTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<vector<unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
 {
   const unsigned int element = oldIds2NewIdsIt->at(tuple[*attributeIdIt]);
   (*attributeIt)->substractPotentialNoise(element, Attribute::noisePerUnit);
@@ -60,12 +60,12 @@ const unsigned int DenseCrispTube::setSelfLoopsInSymmetricAttribute(const unsign
   return 0;
 }
 
-const unsigned int DenseCrispTube::noiseOnValues(const vector<Attribute*>::const_iterator attributeIt, const vector<unsigned int>& valueOriginalIds) const
+const unsigned int DenseCrispTube::noiseOnValues(const vector<Attribute*>::const_iterator attributeIt, const vector<unsigned int>& valueDataIds) const
 {
   unsigned int oldNoise = 0;
-  for (const unsigned int valueOriginalId : valueOriginalIds)
+  for (const unsigned int valueDataId : valueDataIds)
     {
-      if (tube[valueOriginalId])
+      if (tube[valueDataId])
 	{
 	  oldNoise += Attribute::noisePerUnit;
 	}
@@ -73,45 +73,47 @@ const unsigned int DenseCrispTube::noiseOnValues(const vector<Attribute*>::const
   return oldNoise;
 }
 
-const unsigned int DenseCrispTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseCrispTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   // *this necessarily relates to the present attribute
-  if (tube[presentValue.getOriginalId()])
+  if (tube[(*attributeIt)->getChosenValue().getDataId()])
     {
       return Attribute::noisePerUnit;
     }
   return 0;
 }
 
-const unsigned int DenseCrispTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
+const unsigned int DenseCrispTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   // *this necessarily relates to the present attribute
-  if (tube[presentValue.getOriginalId()])
+  const Value& presentValue = (*attributeIt)->getChosenValue();
+  if (tube[presentValue.getDataId()])
     {
-      (*potentialOrAbsentValueIntersectionIt)[presentValue.getId()] += Attribute::noisePerUnit;
+      (*potentialOrAbsentValueIntersectionIt)[presentValue.getIntersectionId()] += Attribute::noisePerUnit;
       return Attribute::noisePerUnit;
     }
   return 0;
 }
 
-const unsigned int DenseCrispTube::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseCrispTube::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   // *this necessarily relates to the absent attribute
-  return noiseOnValues(absentAttributeIt, absentValueOriginalIds);
+  return noiseOnValues(absentAttributeIt, absentValueDataIds);
 }
 
-const unsigned int DenseCrispTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int DenseCrispTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   // *this necessarily relates to the absent attribute
-  return noiseOnValues(absentAttributeIt, absentValueOriginalIds);
+  return noiseOnValues(absentAttributeIt, absentValueDataIds);
 }
 
 const unsigned int DenseCrispTube::presentFixPresentValuesAfterPresentValueMet(Attribute& currentAttribute) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  (*valueIt)->addPresentNoise(Attribute::noisePerUnit);
 	  newNoise += Attribute::noisePerUnit;
@@ -123,25 +125,27 @@ const unsigned int DenseCrispTube::presentFixPresentValuesAfterPresentValueMet(A
 const unsigned int DenseCrispTube::presentFixPresentValuesAfterPresentValueMetAndPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
-	  (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getId()] += Attribute::noisePerUnit;
+	  (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getIntersectionId()] += Attribute::noisePerUnit;
 	  newNoise += Attribute::noisePerUnit;
 	}
     }
   return newNoise;
 }
 
-void DenseCrispTube::presentFixPotentialValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void DenseCrispTube::presentFixPotentialOrAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  (*valueIt)->addPresentNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] += Attribute::noisePerUnit;
@@ -150,14 +154,16 @@ void DenseCrispTube::presentFixPotentialValuesAfterPresentValueMet(Attribute& cu
     }
 }
 
-void DenseCrispTube::presentFixAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void DenseCrispTube::presentFixPotentialOrAbsentValuesInSecondSymmetricAttribute(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  // The first potential value actually is the value set present and there is no noise to be found at the insection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); ++valueIt != end; )
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  (*valueIt)->addPresentNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] += Attribute::noisePerUnit;
@@ -166,15 +172,16 @@ void DenseCrispTube::presentFixAbsentValuesAfterPresentValueMet(Attribute& curre
     }
 }
 
-const unsigned int DenseCrispTube::absentFixPresentValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseCrispTube::absentFixPresentOrPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
@@ -185,15 +192,32 @@ const unsigned int DenseCrispTube::absentFixPresentValuesAfterAbsentValuesMet(At
   return oldNoise;
 }
 
-const unsigned int DenseCrispTube::absentFixPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int DenseCrispTube::absentFixPresentOrPotentialValuesInSecondSymmetricAttribute(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
+	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	    {
+	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
+	    }
+	  oldNoise += Attribute::noisePerUnit;
+	}
+    }
+  end = currentAttribute.irrelevantEnd();
+  // The first potential value actually is the value set absent and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  while (++valueIt != end)
+    {
+      if (tube[(*valueIt)->getDataId()])
+	{
+	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
@@ -204,28 +228,40 @@ const unsigned int DenseCrispTube::absentFixPotentialValuesAfterAbsentValuesMet(
   return oldNoise;
 }
 
-const unsigned int DenseCrispTube::absentFixPresentValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int DenseCrispTube::absentFixPresentOrPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
-	  (*absentValueIntersectionIt)[(*valueIt)->getId()] -= Attribute::noisePerUnit;
+	  (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= Attribute::noisePerUnit;
 	  oldNoise += Attribute::noisePerUnit;
 	}
     }
   return oldNoise;
 }
 
-const unsigned int DenseCrispTube::absentFixPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int DenseCrispTube::absentFixPresentOrPotentialValuesInSecondSymmetricAttributeAfterAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
-	  (*absentValueIntersectionIt)[(*valueIt)->getId()] -= Attribute::noisePerUnit;
+	  (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= Attribute::noisePerUnit;
+	  oldNoise += Attribute::noisePerUnit;
+	}
+    }
+  end = currentAttribute.irrelevantEnd();
+  while (++valueIt != end)
+    {
+      if (tube[(*valueIt)->getDataId()])
+	{
+	  (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= Attribute::noisePerUnit;
 	  oldNoise += Attribute::noisePerUnit;
 	}
     }
@@ -234,12 +270,13 @@ const unsigned int DenseCrispTube::absentFixPotentialValuesAfterAbsentValuesMetA
 
 void DenseCrispTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
@@ -248,38 +285,35 @@ void DenseCrispTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& curren
     }
 }
 
-const unsigned int DenseCrispTube::countNoise(const vector<vector<Element>>::iterator dimensionIt) const
+const unsigned int DenseCrispTube::countNoise(const vector<vector<unsigned int>>::const_iterator dimensionIt) const
 {
   unsigned int noise = 0;
-  for (Element& element : *dimensionIt)
+  for (const unsigned int id : *dimensionIt)
     {
-      if (tube[element.getId()])
+      if (tube[id])
 	{
 	  noise += Attribute::noisePerUnit;
-	  element.addNoise(Attribute::noisePerUnit);
 	}
     }
   return noise;
 }
 
-pair<unsigned int, const bool> DenseCrispTube::countNoiseUpToThresholds(const vector<unsigned int>::const_iterator noiseThresholdIt, const vector<vector<Element>>::iterator dimensionIt, const vector<vector<Element>::iterator>::iterator tupleIt) const
+const bool DenseCrispTube::decreaseMembershipDownToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
 {
-  unsigned int noise = 0;
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
       if (tube[(*tupleIt)->getId()])
 	{
-	  noise += Attribute::noisePerUnit;
-	  (*tupleIt)->addNoise(Attribute::noisePerUnit);
-	  if ((*tupleIt)->getNoise() > *noiseThresholdIt)
+	  membershipSum -= Attribute::noisePerUnit;
+	  if (membershipSum < membershipThreshold)
 	    {
 	      ++*tupleIt;
-	      return pair<unsigned int, const bool>(noise, true);
+	      return true;
 	    }
 	}
     }
   *tupleIt = dimensionIt->begin();
-  return pair<unsigned int, const bool>(noise, false);
+  return false;
 }
 
 #ifdef ASSERT
@@ -287,16 +321,17 @@ const unsigned int DenseCrispTube::countNoiseOnPresent(const vector<Attribute*>:
 {
   if (attributeIt == valueAttributeIt)
     {
-      if (tube[value.getOriginalId()])
+      if (tube[value.getDataId()])
 	{
 	  return Attribute::noisePerUnit;
 	}
       return 0;
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  const vector<Value*>::const_iterator end = (*attributeIt)->presentEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  noise += Attribute::noisePerUnit;
 	}
@@ -308,23 +343,17 @@ const unsigned int DenseCrispTube::countNoiseOnPresentAndPotential(const vector<
 {
   if (attributeIt == valueAttributeIt)
     {
-      if (tube[value.getOriginalId()])
+      if (tube[value.getDataId()])
 	{
 	  return Attribute::noisePerUnit;
 	}
       return 0;
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  const vector<Value*>::const_iterator end = (*attributeIt)->irrelevantEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube[(*valueIt)->getOriginalId()])
-	{
-	  noise += Attribute::noisePerUnit;
-	}
-    }
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->potentialBegin(); valueIt != (*attributeIt)->potentialEnd(); ++valueIt)
-    {
-      if (tube[(*valueIt)->getOriginalId()])
+      if (tube[(*valueIt)->getDataId()])
 	{
 	  noise += Attribute::noisePerUnit;
 	}

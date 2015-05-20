@@ -15,7 +15,7 @@ unsigned int IndistinctSkyPatterns::lastSymmetricAttributeId;
 vector<unsigned int> IndistinctSkyPatterns::maximizedSizeDimensionIds;
 bool IndistinctSkyPatterns::isAreaMaximized;
 
-IndistinctSkyPatterns::IndistinctSkyPatterns(const vector<vector<unsigned int>>& pattern, const vector<float>& minimizedMeasuresParam, const vector<float>& maximizedMeasuresParam): patterns {pattern}, minimizedMeasures(minimizedMeasuresParam), maximizedMeasures(maximizedMeasuresParam), area(1)
+IndistinctSkyPatterns::IndistinctSkyPatterns(const vector<vector<unsigned int>>& pattern, const vector<float>& maximizedMeasuresParam): patterns {pattern}, maximizedMeasures(maximizedMeasuresParam), area(1)
 {
   if (isAreaMaximized)
     {
@@ -43,20 +43,6 @@ ostream& operator<<(ostream& out, const IndistinctSkyPatterns& indistinctSkyPatt
 {
   out << '(';
   bool isFirst = true;
-  for (const float minimizedMeasure : indistinctSkyPatterns.minimizedMeasures)
-    {
-      if (isFirst)
-	{
-	  isFirst = false;
-	}
-      else
-	{
-	  out << ',';
-	}
-      out << minimizedMeasure;
-    }
-  out << "), (";
-  isFirst = true;
   for (const float maximizedMeasure : indistinctSkyPatterns.maximizedMeasures)
     {
       if (isFirst)
@@ -135,61 +121,34 @@ vector<unsigned int> IndistinctSkyPatterns::getMinSizeMeasures() const
   return minSizeMeasures;
 }
 
-const bool IndistinctSkyPatterns::distinct(const vector<float>& otherMinimizedMeasures, const vector<float>& otherMaximizedMeasures) const
+const bool IndistinctSkyPatterns::distinct(const vector<float>& otherMaximizedMeasures) const
 {
   vector<float>::const_iterator otherMeasureIt = otherMaximizedMeasures.begin();
   for (vector<float>::const_iterator maximizedMeasureIt = maximizedMeasures.begin(); maximizedMeasureIt != maximizedMeasures.end() && *maximizedMeasureIt == *otherMeasureIt; ++maximizedMeasureIt)
     {
       ++otherMeasureIt;
     }
-  if (otherMeasureIt != otherMaximizedMeasures.end())
-    {
-      return true;
-    }
-  otherMeasureIt = otherMinimizedMeasures.begin();
-  for (vector<float>::const_iterator minimizedMeasureIt = minimizedMeasures.begin(); minimizedMeasureIt != minimizedMeasures.end() && *minimizedMeasureIt == *otherMeasureIt; ++minimizedMeasureIt)
-    {
-      ++otherMeasureIt;
-    }  
-  return otherMeasureIt != otherMinimizedMeasures.end();
+  return otherMeasureIt != otherMaximizedMeasures.end();
 }
 
-const bool IndistinctSkyPatterns::indistinctOrDominates(const vector<float>& otherMinimizedMeasures, const vector<float>& otherMaximizedMeasures) const
+const bool IndistinctSkyPatterns::indistinctOrDominates(const vector<float>& otherMaximizedMeasures) const
 {
   vector<float>::const_iterator otherMeasureIt = otherMaximizedMeasures.begin();
   for (vector<float>::const_iterator maximizedMeasureIt = maximizedMeasures.begin(); maximizedMeasureIt != maximizedMeasures.end() && *maximizedMeasureIt >= *otherMeasureIt; ++maximizedMeasureIt)
     {
       ++otherMeasureIt;
     }
-  if (otherMeasureIt != otherMaximizedMeasures.end())
-    {
-      return false;
-    }
-  otherMeasureIt = otherMinimizedMeasures.begin();
-  for (vector<float>::const_iterator minimizedMeasureIt = minimizedMeasures.begin(); minimizedMeasureIt != minimizedMeasures.end() && *minimizedMeasureIt <= *otherMeasureIt; ++minimizedMeasureIt)
-    {
-      ++otherMeasureIt;
-    }
-  return otherMeasureIt == otherMinimizedMeasures.end();
+  return otherMeasureIt == otherMaximizedMeasures.end();
 }
 
-const bool IndistinctSkyPatterns::indistinctOrDominatedBy(const vector<float>& otherMinimizedMeasures, const vector<float>& otherMaximizedMeasures) const
+const bool IndistinctSkyPatterns::indistinctOrDominatedBy(const vector<float>& otherMaximizedMeasures) const
 {
   vector<float>::const_iterator otherMeasureIt = otherMaximizedMeasures.begin();
   for (vector<float>::const_iterator maximizedMeasureIt = maximizedMeasures.begin(); maximizedMeasureIt != maximizedMeasures.end() && *maximizedMeasureIt <= *otherMeasureIt; ++maximizedMeasureIt)
     {
       ++otherMeasureIt;
     }
-  if (otherMeasureIt != otherMaximizedMeasures.end())
-    {
-      return false;
-    }
-  otherMeasureIt = otherMinimizedMeasures.begin();
-  for (vector<float>::const_iterator minimizedMeasureIt = minimizedMeasures.begin(); minimizedMeasureIt != minimizedMeasures.end() && *minimizedMeasureIt >= *otherMeasureIt; ++minimizedMeasureIt)
-    {
-      ++otherMeasureIt;
-    }
-  return otherMeasureIt == otherMinimizedMeasures.end();
+  return otherMeasureIt == otherMaximizedMeasures.end();
 }
 
 const bool IndistinctSkyPatterns::minSizeDistinct(const vector<unsigned int>& minSizeMeasures) const
@@ -256,10 +215,10 @@ const unsigned int IndistinctSkyPatterns::minNbOfNonSelfLoopTuplesInHyperplaneOf
   if (hyperplaneDimensionId < firstSymmetricAttributeId || hyperplaneDimensionId > lastSymmetricAttributeId)
     {
       // TODO: check whether round-off errors are problematic (round instead of floor?)
-      return area / maximalPatternSize - static_cast<unsigned int>(floor(static_cast<double>(area) / static_cast<double>(pow(minNbOfSymmetricElements, lastSymmetricAttributeId - firstSymmetricAttributeId)))) + 1;
+      return area / maximalPatternSize - floor(static_cast<double>(area) / pow(minNbOfSymmetricElements, lastSymmetricAttributeId - firstSymmetricAttributeId)) + 1;
     }
   // TODO: check whether round-off errors are problematic (round instead of floor?)
-  return area / maximalPatternSize - static_cast<unsigned int>(floor(static_cast<double>(area) / pow(minNbOfSymmetricElements, lastSymmetricAttributeId - firstSymmetricAttributeId + 1))) + 1;
+  return area / maximalPatternSize - floor(static_cast<double>(area) / pow(minNbOfSymmetricElements, lastSymmetricAttributeId - firstSymmetricAttributeId + 1)) + 1;
 }
 
 const unsigned int IndistinctSkyPatterns::minNbOfNonSelfLoopsTuplesInHyperplaneOfIndistinctPattern(const vector<unsigned int>& minimalPatternSizes, const vector<unsigned int>& maximalPatternSizes, const unsigned int hyperplaneDimensionId, const unsigned int minNbOfSymmetricElements) const
@@ -362,18 +321,18 @@ vector<unsigned int> IndistinctSkyPatterns::minNbOfNonSelfLoopsTuplesInANonDomin
       minNbOfSymmetricElements = minimalPatternSizes[firstSymmetricAttributeId];
       if (isAreaMaximized)
 	{
-	  double minDoubleNbOfSymmetricElementsAccordingToArea = static_cast<double>(area);
+	  double minDoubleNbOfSymmetricElementsAccordingToArea = area;
 	  vector<unsigned int>::const_iterator maximalPatternSizeIt = maximalPatternSizes.begin();
 	  for (unsigned int dimensionId = 0; dimensionId != n; ++dimensionId)
 	    {
 	      if (dimensionId < firstSymmetricAttributeId || dimensionId > lastSymmetricAttributeId)
 		{
-		  minDoubleNbOfSymmetricElementsAccordingToArea /= static_cast<double>(*maximalPatternSizeIt);
+		  minDoubleNbOfSymmetricElementsAccordingToArea /= *maximalPatternSizeIt;
 		}
 	      ++maximalPatternSizeIt;
 	    }
 	  // TODO: check whether round-off errors are problematic (round instead of ceil?)
-	  minNbOfSymmetricElementsAccordingToArea = static_cast<unsigned int>(ceil(pow(minDoubleNbOfSymmetricElementsAccordingToArea, 1 / static_cast<double>(lastSymmetricAttributeId - firstSymmetricAttributeId + 1))));
+	  minNbOfSymmetricElementsAccordingToArea = ceil(pow(minDoubleNbOfSymmetricElementsAccordingToArea, 1. / (lastSymmetricAttributeId - firstSymmetricAttributeId + 1)));
 	  if (minNbOfSymmetricElementsAccordingToArea < minNbOfSymmetricElements)
 	    {
 	      minNbOfSymmetricElementsAccordingToArea = minNbOfSymmetricElements;
@@ -456,18 +415,18 @@ const bool IndistinctSkyPatterns::noSizeOrAreaMaximized()
 {
   return maximizedSizeDimensionIds.empty() && !isAreaMaximized;
 }
-
-void IndistinctSkyPatterns::setParametersToComputePresentAndPotentialIrrelevancyThresholds(const vector<unsigned int>& maximizedSizeDimensionIdsParam, const bool isAreaMaximizedParam)
-{
-  maximizedSizeDimensionIds = maximizedSizeDimensionIdsParam;
-  isAreaMaximized = isAreaMaximizedParam;
-}
 #endif
 
 void IndistinctSkyPatterns::setParametersToComputePresentAndPotentialIrrelevancyThresholds(const unsigned int firstSymmetricAttributeIdParam, const unsigned int lastSymmetricAttributeIdParam)
 {
   firstSymmetricAttributeId = firstSymmetricAttributeIdParam;
   lastSymmetricAttributeId = lastSymmetricAttributeIdParam;
+}
+
+void IndistinctSkyPatterns::setParametersToComputePresentAndPotentialIrrelevancyThresholds(const vector<unsigned int>& maximizedSizeDimensionIdsParam, const bool isAreaMaximizedParam)
+{
+  maximizedSizeDimensionIds = maximizedSizeDimensionIdsParam;
+  isAreaMaximized = isAreaMaximizedParam;
 }
 
 const unsigned int IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(const vector<unsigned int>& sizes, const unsigned int hyperplaneDimensionId, const unsigned int nbOfSymmetricElements)

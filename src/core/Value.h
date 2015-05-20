@@ -20,14 +20,14 @@ using namespace std;
 class Value
 {
  public:
-  Value(const unsigned int id);
-  Value(const unsigned int id, const unsigned int presentAndPotentialNoise, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeBegin, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeEnd, const vector<unsigned int>& noisesInIntersections);
-  Value(const Value& otherValue, const unsigned int id, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd);
+  Value(const unsigned int dataId);
+  Value(const unsigned int dataId, const unsigned int presentAndPotentialNoise, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeBegin, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeEnd, const vector<unsigned int>& noisesInIntersections);
+  Value(const Value& otherValue, const unsigned int intersectionId, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd);
 
   const bool operator<(const Value& otherValue) const;
 
-  const unsigned int getId() const;
-  const unsigned int getOriginalId() const;
+  const unsigned int getIntersectionId() const;
+  const unsigned int getDataId() const;
   const unsigned int getPresentNoise() const;
   const unsigned int getPresentAndPotentialNoise() const;
   void addPresentNoise(const unsigned int noise);
@@ -50,19 +50,19 @@ class Value
   const bool symmetricValuesExtendFuturePresentAndPotential(const Value& symmetricValue, const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int reverseAttributeIndex) const;
 
   /*debug*/
-  /* vector<vector<unsigned int>> getNoiseInIntersectionsWithPresentAndPotentialValues() const; */
-  /* vector<vector<unsigned int>> getNoiseInIntersectionsWithPresentValues() const; */
+  /* vector<vector<unsigned int>> getIntersectionsWithPresentAndPotentialValues() const; */
+  /* vector<vector<unsigned int>> getIntersectionsWithPresentValues() const; */
   /*/debug*/
 
-  static const bool smallerId(const Value* value, const Value* otherValue);
+  static const bool smallerDataId(const Value* value, const Value* otherValue);
 
  protected:
-  unsigned int id;
-  unsigned int originalId;
+  unsigned int dataId;
+  unsigned int intersectionId;
   unsigned int presentNoise;
   unsigned int presentAndPotentialNoise;
-  vector<vector<unsigned int>> noiseInIntersectionWithPresentValues;
-  vector<vector<unsigned int>> noiseInIntersectionWithPresentAndPotentialValues;
+  vector<vector<unsigned int>> intersectionsWithPresentValues;
+  vector<vector<unsigned int>> intersectionsWithPresentAndPotentialValues;
 };
 
 #endif /*VALUE_H_*/

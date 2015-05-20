@@ -33,6 +33,7 @@ class NoisyTupleFileReader
  public:
   NoisyTupleFileReader(const char* noisyNSetFileName, const vector<unsigned int>& symDimensionIdsParam, const vector<unsigned int>& numDimensionIdsParam, const char* inputDimensionSeparator, const char* inputElementSeparator);
 
+  const vector<string>& getIds2Labels(const unsigned int dimensionId) const;
   vector<unsigned int> getCardinalities() const;
 
   pair<vector<unsigned int>, double> next();
@@ -40,10 +41,11 @@ class NoisyTupleFileReader
   void startOverFromNextLine();
 
   void printTuplesInFirstDimensionHyperplane(ostream& out, const unsigned int firstDimensionHyperplaneId, const unordered_map<vector<unsigned int>, double, vector_hash<unsigned int>>::const_iterator begin, const unordered_map<vector<unsigned int>, double, vector_hash<unsigned int>>::const_iterator end, const string& outputDimensionSeparator) const;
-  /* WARNING: next and printTuplesInFirstDimensionHyperplane cannot be called after the three following methods (move semantics) */
-  string captureLabel(const unsigned int dimensionId, const unsigned int elementId);
-  vector<unordered_map<string, unsigned int>> captureLabels2Ids(); /* when no dimension is symmetric */
-  vector<unordered_map<string, unsigned int>> captureLabels2Ids(const unsigned int firstSymmetricDimensionId); /* when some dimensions are symmetric */
+  /* WARNING: next and printTuplesInFirstDimensionHyperplane cannot be called after the following methods */
+  vector<string> setNewIdsAndGetLabels(const unsigned int dimensionId, const vector<unsigned int>& oldIds2NewIds, const unsigned int nbOfValidLabels);
+  vector<string> setNewIdsAndGetSymmetricLabels(const vector<unsigned int>& oldIds2NewIds, const unsigned int nbOfValidLabels);
+  unordered_map<string, unsigned int>&& captureLabels2Ids(const unsigned int dimensionId);
+  unordered_map<string, unsigned int>&& captureSymmetricLabels2Ids();
 
  protected:
   string noisyNSetFileName;

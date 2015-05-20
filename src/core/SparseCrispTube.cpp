@@ -1,4 +1,4 @@
-// Copyright 2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -33,7 +33,7 @@ void SparseCrispTube::print(vector<unsigned int>& prefix, ostream& out) const
     }
 }
 
-const bool SparseCrispTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<unordered_map<unsigned int, unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
+const bool SparseCrispTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<vector<unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
 {
   const unsigned int element = oldIds2NewIdsIt->at(tuple[*attributeIdIt]);
   (*attributeIt)->substractPotentialNoise(element, Attribute::noisePerUnit);
@@ -42,7 +42,7 @@ const bool SparseCrispTube::setTuple(const vector<unsigned int>& tuple, const un
       (*intersectionIt)[element] -= Attribute::noisePerUnit;
     }
   tube.insert(element);
-  return tube.bucket_count() + 2 * tube.size() * sizeof(unsigned int*) > (*attributeIt)->sizeOfPotential() * densityThreshold; // In the worst case (all values in th same bucket), the unordered_set<unsigned int> takes more space than a vector<unsigned int> * densityThreshold
+  return tube.bucket_count() + 2 * tube.size() * sizeof(unsigned int*) > (*attributeIt)->sizeOfPresentAndPotential() * densityThreshold; // In the worst case (all values in th same bucket), the unordered_set<unsigned int> takes more space than a vector<unsigned int> * densityThreshold
 }
 
 const unsigned int SparseCrispTube::setSelfLoopsInSymmetricAttribute(const unsigned int hyperplaneId, const unsigned int lastSymmetricAttributeId, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, const unsigned int dimensionId)
@@ -67,12 +67,12 @@ void SparseCrispTube::setDensityThreshold(const float densityThresholdParam)
   densityThreshold = densityThresholdParam / 8;
 }
 
-const unsigned int SparseCrispTube::noiseOnValues(const vector<Attribute*>::const_iterator attributeIt, const vector<unsigned int>& valueOriginalIds) const
+const unsigned int SparseCrispTube::noiseOnValues(const vector<Attribute*>::const_iterator attributeIt, const vector<unsigned int>& valueDataIds) const
 {
   unsigned int oldNoise = 0;
-  for (const unsigned int valueOriginalId : valueOriginalIds)
+  for (const unsigned int valueDataId : valueDataIds)
     {
-      if (tube.find(valueOriginalId) == tube.end())
+      if (tube.find(valueDataId) == tube.end())
 	{
 	  oldNoise += Attribute::noisePerUnit;
 	}
@@ -80,47 +80,47 @@ const unsigned int SparseCrispTube::noiseOnValues(const vector<Attribute*>::cons
   return oldNoise;
 }
 
-const unsigned int SparseCrispTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int SparseCrispTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   // *this necessarily relates to the present attribute
-  if (tube.find(presentValue.getOriginalId()) == tube.end())
+  if (tube.find((*attributeIt)->getChosenValue().getDataId()) == tube.end())
     {
       return Attribute::noisePerUnit;
     }
   return 0;
 }
 
-const unsigned int SparseCrispTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
+const unsigned int SparseCrispTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   // *this necessarily relates to the present attribute
-  const unsigned int presentValueId = presentValue.getId();
-  if (tube.find(presentValue.getOriginalId()) == tube.end())
+  const Value& presentValue = (*attributeIt)->getChosenValue();
+  if (tube.find(presentValue.getDataId()) == tube.end())
     {
-      (*potentialOrAbsentValueIntersectionIt)[presentValueId] += Attribute::noisePerUnit;
+      (*potentialOrAbsentValueIntersectionIt)[presentValue.getIntersectionId()] += Attribute::noisePerUnit;
       return Attribute::noisePerUnit;
     }
   return 0;
 }
 
-
-const unsigned int SparseCrispTube::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int SparseCrispTube::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   // *this necessarily relates to the absent attribute
-  return noiseOnValues(absentAttributeIt, absentValueOriginalIds);
+  return noiseOnValues(absentAttributeIt, absentValueDataIds);
 }
 
-const unsigned int SparseCrispTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int SparseCrispTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   // *this necessarily relates to the absent attribute
-  return noiseOnValues(absentAttributeIt, absentValueOriginalIds);
+  return noiseOnValues(absentAttributeIt, absentValueDataIds);
 }
 
 const unsigned int SparseCrispTube::presentFixPresentValuesAfterPresentValueMet(Attribute& currentAttribute) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  (*valueIt)->addPresentNoise(Attribute::noisePerUnit);
 	  newNoise += Attribute::noisePerUnit;
@@ -132,25 +132,27 @@ const unsigned int SparseCrispTube::presentFixPresentValuesAfterPresentValueMet(
 const unsigned int SparseCrispTube::presentFixPresentValuesAfterPresentValueMetAndPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
-	  (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getId()] += Attribute::noisePerUnit;
+	  (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getIntersectionId()] += Attribute::noisePerUnit;
 	  newNoise += Attribute::noisePerUnit;
 	}
     }
   return newNoise;
 }
 
-void SparseCrispTube::presentFixPotentialValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void SparseCrispTube::presentFixPotentialOrAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  (*valueIt)->addPresentNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] += Attribute::noisePerUnit;
@@ -159,14 +161,16 @@ void SparseCrispTube::presentFixPotentialValuesAfterPresentValueMet(Attribute& c
     }
 }
 
-void SparseCrispTube::presentFixAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void SparseCrispTube::presentFixPotentialOrAbsentValuesInSecondSymmetricAttribute(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  // The first potential value actually is the value set present and there is no noise to be found at the insection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); ++valueIt != end; )
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  (*valueIt)->addPresentNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] += Attribute::noisePerUnit;
@@ -175,15 +179,16 @@ void SparseCrispTube::presentFixAbsentValuesAfterPresentValueMet(Attribute& curr
     }
 }
 
-const unsigned int SparseCrispTube::absentFixPresentValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int SparseCrispTube::absentFixPresentOrPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
@@ -194,15 +199,31 @@ const unsigned int SparseCrispTube::absentFixPresentValuesAfterAbsentValuesMet(A
   return oldNoise;
 }
 
-const unsigned int SparseCrispTube::absentFixPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int SparseCrispTube::absentFixPresentOrPotentialValuesInSecondSymmetricAttribute(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
+	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	    {
+	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
+	    }
+	  oldNoise += Attribute::noisePerUnit;
+	}
+    }
+  end = currentAttribute.irrelevantEnd();
+  while (++valueIt != end)
+    {
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
+	{
+	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
@@ -213,28 +234,40 @@ const unsigned int SparseCrispTube::absentFixPotentialValuesAfterAbsentValuesMet
   return oldNoise;
 }
 
-const unsigned int SparseCrispTube::absentFixPresentValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int SparseCrispTube::absentFixPresentOrPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
-	  (*absentValueIntersectionIt)[(*valueIt)->getId()] -= Attribute::noisePerUnit;
+	  (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= Attribute::noisePerUnit;
 	  oldNoise += Attribute::noisePerUnit;
 	}
     }
   return oldNoise;
 }
 
-const unsigned int SparseCrispTube::absentFixPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int SparseCrispTube::absentFixPresentOrPotentialValuesInSecondSymmetricAttributeAfterAbsentUsed(Attribute& currentAttribute, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
-	  (*absentValueIntersectionIt)[(*valueIt)->getId()] -= Attribute::noisePerUnit;
+	  (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= Attribute::noisePerUnit;
+	  oldNoise += Attribute::noisePerUnit;
+	}
+    }
+  end = currentAttribute.irrelevantEnd();
+  while (++valueIt != end)
+    {
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
+	{
+	  (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= Attribute::noisePerUnit;
 	  oldNoise += Attribute::noisePerUnit;
 	}
     }
@@ -243,12 +276,13 @@ const unsigned int SparseCrispTube::absentFixPotentialValuesAfterAbsentValuesMet
 
 void SparseCrispTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& currentAttribute, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  (*valueIt)->substractPotentialNoise(Attribute::noisePerUnit);
-	  const unsigned int valueId = (*valueIt)->getId();
+	  const unsigned int valueId = (*valueIt)->getIntersectionId();
 	  for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	    {
 	      (*intersectionIt)[valueId] -= Attribute::noisePerUnit;
@@ -257,38 +291,35 @@ void SparseCrispTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& curre
     }
 }
 
-const unsigned int SparseCrispTube::countNoise(const vector<vector<Element>>::iterator dimensionIt) const
+const unsigned int SparseCrispTube::countNoise(const vector<vector<unsigned int>>::iterator dimensionIt) const
 {
   unsigned int noise = 0;
-  for (Element& element : *dimensionIt)
+  for (const unsigned int id : *dimensionIt)
     {
-      if (tube.find(element.getId()) == tube.end())
+      if (tube.find(id) == tube.end())
 	{
 	  noise += Attribute::noisePerUnit;
-	  element.addNoise(Attribute::noisePerUnit);
 	}
     }
   return noise;
 }
 
-pair<unsigned int, const bool> SparseCrispTube::countNoiseUpToThresholds(const vector<unsigned int>::const_iterator noiseThresholdIt, const vector<vector<Element>>::iterator dimensionIt, const vector<vector<Element>::iterator>::iterator tupleIt) const
+const bool SparseCrispTube::decreaseMembershipDownToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
 {
-  unsigned int noise = 0;
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
       if (tube.find((*tupleIt)->getId()) == tube.end())
 	{
-	  noise += Attribute::noisePerUnit;
-	  (*tupleIt)->addNoise(Attribute::noisePerUnit);
-	  if ((*tupleIt)->getNoise() > *noiseThresholdIt)
+	  membershipSum -= Attribute::noisePerUnit;
+	  if (membershipSum < membershipThreshold)
 	    {
 	      ++*tupleIt;
-	      return pair<unsigned int, const bool>(noise, true);
+	      return true;
 	    }
 	}
     }
   *tupleIt = dimensionIt->begin();
-  return pair<unsigned int, const bool>(noise, false);
+  return false;
 }
 
 #ifdef ASSERT
@@ -296,16 +327,17 @@ const unsigned int SparseCrispTube::countNoiseOnPresent(const vector<Attribute*>
 {
   if (attributeIt == valueAttributeIt)
     {
-      if (tube.find(value.getOriginalId()) == tube.end())
+      if (tube.find(value.getDataId()) == tube.end())
 	{
 	  return Attribute::noisePerUnit;
 	}
       return 0;
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  const vector<Value*>::const_iterator end = (*attributeIt)->presentEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  noise += Attribute::noisePerUnit;
 	}
@@ -317,23 +349,17 @@ const unsigned int SparseCrispTube::countNoiseOnPresentAndPotential(const vector
 {
   if (attributeIt == valueAttributeIt)
     {
-      if (tube.find(value.getOriginalId()) == tube.end())
+      if (tube.find(value.getDataId()) == tube.end())
 	{
 	  return Attribute::noisePerUnit;
 	}
       return 0;
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  vector<Value*>::const_iterator end = (*attributeIt)->irrelevantEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
-	{
-	  noise += Attribute::noisePerUnit;
-	}
-    }
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->potentialBegin(); valueIt != (*attributeIt)->potentialEnd(); ++valueIt)
-    {
-      if (tube.find((*valueIt)->getOriginalId()) == tube.end())
+      if (tube.find((*valueIt)->getDataId()) == tube.end())
 	{
 	  noise += Attribute::noisePerUnit;
 	}

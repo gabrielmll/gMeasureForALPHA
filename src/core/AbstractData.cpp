@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -12,4 +12,9 @@
 
 AbstractData::~AbstractData()
 {
+}
+
+const unsigned int AbstractData::depth() const
+{
+  return 0;
 }

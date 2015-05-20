@@ -14,59 +14,44 @@ Element::Element(const unsigned int idParam, const unsigned int noiseParam): id(
 {
 }
 
-// noise -> valor absoluto da contagem de todos os ruidos do hiperplano
-
-
-
-// Return true if this element has less noisy then the other. False otherwise.
 const bool Element::operator<(const Element& otherElement) const
 {
   return noise < otherElement.noise;
 }
 
-// Return this element's ID
 const unsigned int Element::getId() const
 {
   return id;
 }
 
-// Return this element's noise
 const unsigned int Element::getNoise() const
 {
   return noise;
 }
 
-// Increase this element's noise by n
 void Element::addNoise(const unsigned int n)
 {
   noise += n;
 }
 
-// Return true if this element has smaller ID then the other. False otherwise.
 const bool Element::smallerId(const Element& e1, const Element& e2)
 {
   return e1.id < e2.id;
 }
 
-// Unites 2 id-sorted element's vector
 vector<unsigned int> Element::idVectorUnion(const vector<Element>& v1,const vector<Element>& v2)
 {
-  vector<unsigned int> unionVector;	// Union resulted vector to be returned
+  vector<unsigned int> unionVector;
   unionVector.reserve(v1.size() + v2.size());
   vector<Element>::const_iterator v1It = v1.begin();
   vector<Element>::const_iterator v2It = v2.begin();
   while (true)
     {
-			// Case 1: v1 has smaller id
-     	// Note: why not use smallerId method?
       if (v1It->id < v2It->id)
 	{
-	  // start unionVector with v1
 	  unionVector.push_back(v1It->id);
-	  // is v1 finished?
 	  if (++v1It == v1.end())
 	    {
-	      // so append each v2 element to the unionVector
 	      for (; v2It != v2.end(); ++v2It)
 		{
 		  unionVector.push_back(v2It->id);
@@ -76,13 +61,10 @@ vector<unsigned int> Element::idVectorUnion(const vector<Element>& v1,const vect
 	}
       else
 	{
-	  // Case 2: v1 and v2's ids are the same
 	  if (v1It->id == v2It->id)
 	    {
-	      // Iterator to v1 increase and V1 has only one element
 	      if (++v1It == v1.end())
 		{
-			// So, just copy v2
 		  for (; v2It != v2.end(); ++v2It)
 		    {
 		      unionVector.push_back(v2It->id);
@@ -98,8 +80,7 @@ vector<unsigned int> Element::idVectorUnion(const vector<Element>& v1,const vect
 		    }
 		  return unionVector;
 		}
-	    }
-	  // case 3: v2 has smaller id	
+	    }	
 	  else
 	    {
 	      unionVector.push_back(v2It->id);

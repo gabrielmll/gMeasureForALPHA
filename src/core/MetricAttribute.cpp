@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -13,113 +13,104 @@
 vector<double> MetricAttribute::tauVector;
 vector<vector<double>> MetricAttribute::timestampsVector;
 
-MetricAttribute::MetricAttribute(const vector<unsigned int>& nbOfValuesPerAttribute, const double epsilon, const double tau): Attribute(nbOfValuesPerAttribute, epsilon)
+MetricAttribute::MetricAttribute(const vector<unsigned int>& nbOfValuesPerAttribute, const double epsilon, const vector<string>& labels, const double tau): Attribute(nbOfValuesPerAttribute, epsilon, labels)
 {
   tauVector.resize(id + 1);
   tauVector.back() = tau;
+  timestampsVector.resize(id + 1);
+  vector<double>& timestampsOfThisAttribute = timestampsVector.back();
+  timestampsOfThisAttribute.reserve(labels.size());
+  for (const string& label : labels)
+    {
+      timestampsOfThisAttribute.push_back(lexical_cast<double>(label));
+    }
 }
 
 MetricAttribute::MetricAttribute(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd): Attribute()
 {
-  const vector<Attribute*>::const_iterator parentNextAttributeIt = parentAttributeIt + 1;
   const MetricAttribute& parentMetricAttribute = static_cast<MetricAttribute&>(**parentAttributeIt);
   id = parentMetricAttribute.id;
-  const unsigned int presentAndPotentialSize = parentMetricAttribute.present.size() + parentMetricAttribute.potential.size();
+  values.resize(parentMetricAttribute.values.size());
+  potentialIndex = parentMetricAttribute.potentialIndex;
+  absentIndex = parentMetricAttribute.absentIndex;
+  unsigned int presentIndex = 0;
+  const vector<Attribute*>::const_iterator parentNextAttributeIt = parentAttributeIt + 1;
   unsigned int newId = 0;
-  potential.reserve(parentMetricAttribute.potential.size());
-  present.reserve(presentAndPotentialSize);
-  absent.reserve(parentMetricAttribute.absent.size() + parentMetricAttribute.potential.size());
-  vector<Value*>::const_iterator potentialValueIt = parentMetricAttribute.potential.begin();
-  vector<Value*>::const_iterator presentValueIt = parentMetricAttribute.present.begin();
-  vector<Value*>::const_iterator absentValueIt = parentMetricAttribute.absent.begin();
-  while (potentialValueIt != parentMetricAttribute.potential.end() || presentValueIt != parentMetricAttribute.present.end() || absentValueIt != parentMetricAttribute.absent.end())
+  vector<Value*>::const_iterator presentValueIt = parentMetricAttribute.values.begin();
+  vector<Value*>::const_iterator potentialValueIt = presentValueIt + potentialIndex;
+  const vector<Value*>::const_iterator presentEnd = potentialValueIt;
+  vector<Value*>::const_iterator absentValueIt = presentValueIt + absentIndex;
+  const vector<Value*>::const_iterator potentialEnd = absentValueIt;
+  const vector<Value*>::const_iterator absentEnd = parentMetricAttribute.values.end();
+  while (presentValueIt != presentEnd || potentialValueIt != potentialEnd || absentValueIt != absentEnd)
     {
-      if (potentialValueIt == parentMetricAttribute.potential.end())
+      if (presentValueIt == presentEnd)
 	{
-	  if (presentValueIt == parentMetricAttribute.present.end())
+	  if (potentialValueIt == potentialEnd || (absentValueIt != absentEnd && (*absentValueIt)->getDataId() < (*potentialValueIt)->getDataId()))
 	    {
-	      absent.push_back(createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+	      values[absentIndex++] = createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 	    }
 	  else
 	    {
-	      if (absentValueIt == parentMetricAttribute.absent.end())
-		{
-		  present.push_back(createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
-		}
-	      else
-		{
-		  if ((*presentValueIt)->getId() < (*absentValueIt)->getId())
-		    {
-		      present.push_back(createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
-		    }
-		  else
-		    {
-		      absent.push_back(createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
-		    }
-		}
+	      values[potentialIndex++] = createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 	    }
 	}
       else
 	{
-	  if (presentValueIt == parentMetricAttribute.present.end())
+	  if (potentialValueIt == potentialEnd)
 	    {
-	      if (absentValueIt == parentMetricAttribute.absent.end())
+	      if (absentValueIt == absentEnd || (*absentValueIt)->getDataId() > (*presentValueIt)->getDataId())
 		{
-		  potential.push_back(createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+		  values[presentIndex++] = createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 		}
 	      else
 		{
-		  if ((*potentialValueIt)->getId() < (*absentValueIt)->getId())
-		    {
-		      potential.push_back(createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
-		    }
-		  else
-		    {
-		      absent.push_back(createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
-		    }
+		  values[absentIndex++] = createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 		}
 	    }
 	  else
 	    {
-	      if (absentValueIt == parentMetricAttribute.absent.end())
+	      if (absentValueIt == absentEnd)
 		{
-		  if ((*potentialValueIt)->getId() < (*presentValueIt)->getId())
+		  if ((*potentialValueIt)->getDataId() < (*presentValueIt)->getDataId())
 		    {
-		      potential.push_back(createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+		      values[potentialIndex++] = createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 		    }
 		  else
 		    {
-		      present.push_back(createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+		      values[presentIndex++] = createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 		    }
 		}
 	      else
 		{
-		  if ((*potentialValueIt)->getId() < (*presentValueIt)->getId())
+		  if ((*absentValueIt)->getDataId() < (*potentialValueIt)->getDataId())
 		    {
-		      if ((*potentialValueIt)->getId() < (*absentValueIt)->getId())
+		      if ((*absentValueIt)->getDataId() < (*presentValueIt)->getDataId())
 			{
-			  potential.push_back(createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+			  values[absentIndex++] = createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 			}
 		      else
 			{
-			  absent.push_back(createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+			  values[presentIndex++] = createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 			}
 		    }
 		  else
 		    {
-		      if ((*presentValueIt)->getId() < (*absentValueIt)->getId())
+		      if ((*potentialValueIt)->getDataId() < (*presentValueIt)->getDataId())
 			{
-			  present.push_back(createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+			  values[potentialIndex++] = createChildValue(**potentialValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 			}
 		      else
 			{
-			  absent.push_back(createChildValue(**absentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd));
+			  values[presentIndex++] = createChildValue(**presentValueIt++, newId++, sizeOfAttributeIt, sizeOfAttributeEnd, parentNextAttributeIt, parentAttributeEnd);
 			}
 		    }
 		}
 	    }
 	}
     }
+  potentialIndex = parentMetricAttribute.potentialIndex;
+  absentIndex = parentMetricAttribute.absentIndex;
 }
 
 MetricAttribute* MetricAttribute::clone(const vector<Attribute*>::const_iterator parentAttributeIt, const vector<Attribute*>::const_iterator parentAttributeEnd, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd) const
@@ -127,647 +118,430 @@ MetricAttribute* MetricAttribute::clone(const vector<Attribute*>::const_iterator
   return new MetricAttribute(parentAttributeIt, parentAttributeEnd, sizeOfAttributeIt, sizeOfAttributeEnd);
 }
 
-unordered_map<unsigned int, unsigned int> MetricAttribute::setLabels(unordered_map<string, unsigned int>& labels2Ids) const
-{
-  timestampsVector.resize(id + 1);
-  vector<double>& timestampsOfThisAttribute = timestampsVector.back();
-  timestampsOfThisAttribute.reserve(potential.size());
-  for (pair<const string, unsigned int>& label2Id : labels2Ids)
-    {
-      if (label2Id.second != numeric_limits<unsigned int>::max())
-	{
-	  timestampsOfThisAttribute.push_back(lexical_cast<double>(label2Id.first));
-	}
-    }
-  sort(timestampsOfThisAttribute.begin(), timestampsOfThisAttribute.end());
-  unordered_map<unsigned int, unsigned int> oldId2NewIds;
-  vector<string> labels;
-  labels.reserve(potential.size());
-  for (double timestamp : timestampsOfThisAttribute)
-    {
-      const string label = lexical_cast<string>(timestamp);
-      pair<const string, unsigned int>& label2Id = *labels2Ids.find(label);
-      oldId2NewIds[label2Id.second] = labels.size();
-      label2Id.second = labels.size();
-      labels.push_back(label);
-    }
-  labelsVector.push_back(labels);
-  return oldId2NewIds;
-}
-
 void MetricAttribute::setChildValueIntersections(const vector<unsigned int>& noiseInIntersectionWithPresentValues, const vector<unsigned int>& noiseInIntersectionWithPresentAndPotentialValues, vector<unsigned int>& childNoiseInIntersectionWithPresentValues, vector<unsigned int>& childNoiseInIntersectionWithPresentAndPotentialValues) const
 {
-  vector<Value*>::const_iterator presentValueIt = present.begin();
-  vector<Value*>::const_iterator absentValueIt = absent.begin();
-  vector<Value*>::const_iterator potentialValueIt = potential.begin();
-  while (potentialValueIt != potential.end() || presentValueIt != present.end() || absentValueIt != absent.end())
+  vector<Value*>::const_iterator presentValueIt = values.begin();
+  vector<Value*>::const_iterator potentialValueIt = presentValueIt + potentialIndex;
+  const vector<Value*>::const_iterator presentEnd = potentialValueIt;
+  vector<Value*>::const_iterator absentValueIt = presentValueIt + absentIndex;
+  const vector<Value*>::const_iterator potentialEnd = absentValueIt;
+  const vector<Value*>::const_iterator absentEnd = values.end();
+  while (potentialValueIt != potentialEnd || presentValueIt != presentEnd || absentValueIt != absentEnd)
     {
-      if (potentialValueIt == potential.end())
+      unsigned int valueId;
+      if (presentValueIt == presentEnd)
 	{
-	  if (presentValueIt == present.end())
+	  if (potentialValueIt == potentialEnd || (absentValueIt != absentEnd && (*absentValueIt)->getDataId() < (*potentialValueIt)->getDataId()))
 	    {
-	      const unsigned int valueId = (*absentValueIt++)->getId();
-	      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-	      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+	      valueId = (*absentValueIt++)->getIntersectionId();
 	    }
 	  else
 	    {
-	      if (absentValueIt == absent.end())
-		{
-		  const unsigned int valueId = (*presentValueIt++)->getId();
-		  childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		  childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
-		}
-	      else
-		{
-		  if ((*presentValueIt)->getId() < (*absentValueIt)->getId())
-		    {
-		      const unsigned int valueId = (*presentValueIt++)->getId();
-		      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
-		    }
-		  else
-		    {
-		      const unsigned int valueId = (*absentValueIt++)->getId();
-		      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
-		    }
-		}
+	      valueId = (*potentialValueIt++)->getIntersectionId();
 	    }
 	}
       else
 	{
-	  if (presentValueIt == present.end())
+	  if (potentialValueIt == potentialEnd)
 	    {
-	      if (absentValueIt == absent.end())
+	      if (absentValueIt == absentEnd || (*absentValueIt)->getDataId() > (*presentValueIt)->getDataId())
 		{
-		  const unsigned int valueId = (*potentialValueIt++)->getId();
-		  childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		  childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+		  valueId = (*presentValueIt++)->getIntersectionId();
 		}
 	      else
 		{
-		  if ((*potentialValueIt)->getId() < (*absentValueIt)->getId())
-		    {
-		      const unsigned int valueId = (*potentialValueIt++)->getId();
-		      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
-		    }
-		  else
-		    {
-		      const unsigned int valueId = (*absentValueIt++)->getId();
-		      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
-		    }
+		  valueId = (*absentValueIt++)->getIntersectionId();
 		}
 	    }
 	  else
 	    {
-	      if (absentValueIt == absent.end())
+	      if (absentValueIt == absentEnd)
 		{
-		  if ((*potentialValueIt)->getId() < (*presentValueIt)->getId())
+		  if ((*potentialValueIt)->getDataId() < (*presentValueIt)->getDataId())
 		    {
-		      const unsigned int valueId = (*potentialValueIt++)->getId();
-		      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+		      valueId = (*potentialValueIt++)->getIntersectionId();
 		    }
 		  else
 		    {
-		      const unsigned int valueId = (*presentValueIt++)->getId();
-		      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-		      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+		      valueId = (*presentValueIt++)->getIntersectionId();
 		    }
 		}
 	      else
 		{
-		  if ((*potentialValueIt)->getId() < (*presentValueIt)->getId())
+		  if ((*absentValueIt)->getDataId() < (*potentialValueIt)->getDataId())
 		    {
-		      if ((*potentialValueIt)->getId() < (*absentValueIt)->getId())
+		      if ((*absentValueIt)->getDataId() < (*presentValueIt)->getDataId())
 			{
-			  const unsigned int valueId = (*potentialValueIt++)->getId();
-			  childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-			  childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+			  valueId = (*absentValueIt++)->getIntersectionId();
 			}
 		      else
 			{
-			  const unsigned int valueId = (*absentValueIt++)->getId();
-			  childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-			  childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+			  valueId = (*presentValueIt++)->getIntersectionId();
 			}
 		    }
 		  else
 		    {
-		      if ((*presentValueIt)->getId() < (*absentValueIt)->getId())
+		      if ((*potentialValueIt)->getDataId() < (*presentValueIt)->getDataId())
 			{
-			  const unsigned int valueId = (*presentValueIt++)->getId();
-			  childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-			  childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+			  valueId = (*potentialValueIt++)->getIntersectionId();
 			}
 		      else
 			{
-			  const unsigned int valueId = (*absentValueIt++)->getId();
-			  childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
-			  childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
+			  valueId = (*presentValueIt++)->getIntersectionId();
 			}
 		    }
 		}
 	    }
 	}
+      childNoiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresentValues[valueId]);
+      childNoiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotentialValues[valueId]);
     }
 }
 
-Value* MetricAttribute::moveValueFromPotentialToPresent(const unsigned int valueOriginalId)
+void MetricAttribute::chooseValue()
 {
-  vector<Value*>::iterator valueIt = potential.begin();
-  for (; (*valueIt)->getOriginalId() != valueOriginalId; ++valueIt)
+  const vector<Value*>::iterator potentialBegin = values.begin() + potentialIndex;
+  vector<Value*>::iterator valueIt;
+  if (isDensestValuePreferred)
     {
+      valueIt = min_element(potentialBegin, values.begin() + absentIndex, lessNoisy);
+      rotate(potentialBegin, valueIt, valueIt + 1);
+      return;
     }
-  Value* value = *(present.insert(lower_bound(present.begin(), present.end(), *valueIt, Value::smallerId), *valueIt));
-  potential.erase(valueIt);
-  return value;
+  valueIt = max_element(potentialBegin, values.begin() + absentIndex, lessNoisy);
+  rotate(potentialBegin, valueIt, valueIt + 1);
 }
 
-Value* MetricAttribute::moveValueFromPotentialToAbsent(const vector<Value*>::iterator valueIt)
+void MetricAttribute::setChosenValuePresent()
 {
-  Value* value = *(absent.insert(lower_bound(absent.begin(), absent.end(), *valueIt, Value::smallerId), *valueIt));
-  potential.erase(valueIt);
-  return value;
+  const vector<Value*>::iterator valuesBegin = values.begin();
+  vector<Value*>::iterator valueIt = valuesBegin + potentialIndex++;
+  Value* chosenValue = *valueIt;
+  const unsigned int chosenValueDataId = chosenValue->getDataId();
+  if ((*valuesBegin)->getDataId() < chosenValueDataId)
+    {
+      for (vector<Value*>::iterator nextValueIt = valueIt - 1; (*nextValueIt)->getDataId() > chosenValueDataId; --nextValueIt)
+	{
+	  *valueIt = *nextValueIt;
+	  --valueIt;
+	}
+      *valueIt = chosenValue;
+      return;
+    }
+  rotate(valuesBegin, valueIt, valueIt + 1);
+}
+
+void MetricAttribute::setChosenValueAbsent(const bool isValuePotentiallyPreventingClosedness)
+{
+  --irrelevantIndex;
+  const vector<Value*>::iterator valuesBegin = values.begin();
+  vector<Value*>::iterator chosenValueIt = valuesBegin + potentialIndex;
+  Value* chosenValue = *chosenValueIt;
+#ifdef DETECT_NON_EXTENSION_ELEMENTS
+  if (isValuePotentiallyPreventingClosedness && isClosedVector[id])
+#else
+  if (isClosedVector[id])
+#endif
+    {
+      vector<Value*>::iterator valueIt = valuesBegin + absentIndex--;
+      rotate(chosenValueIt, chosenValueIt + 1, valueIt);
+      const unsigned int chosenValueDataId = chosenValue->getDataId();
+      if (values.back()->getDataId() > chosenValueDataId)
+	{
+	  vector<Value*>::iterator previousValueIt = valueIt - 1;
+	  for (; (*valueIt)->getDataId() < chosenValueDataId; ++previousValueIt)
+	    {
+	      *previousValueIt = *valueIt;
+	      ++valueIt;
+	    }
+	  *previousValueIt = chosenValue;
+	  return;
+	}
+      rotate(valueIt - 1, valueIt, values.end());
+      return;
+    }
+  delete chosenValue;
+  values.erase(chosenValueIt);
+  --absentIndex;
 }
 
 // PERF: decrease of the absent intervals on which binary searches are performed (use of the last iterator returned as a new bound)
-pair<bool, vector<unsigned int>> MetricAttribute::findIrrelevantValuesAndCheckTauContiguity(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd, IrrelevantValueIds& irrelevantValueIds)
+const bool MetricAttribute::findIrrelevantValuesAndCheckTauContiguity(const vector<Attribute*>::iterator attributeBegin, const vector<Attribute*>::iterator attributeEnd)
 {
-  if (present.empty())
+  if (potentialIndex == absentIndex)
     {
-      return Attribute::findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd, irrelevantValueIds);
+      return false;
     }
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  if (potential.empty())
+  if (potentialIndex == 0)
     {
-#ifdef DETAILED_TIME
-      propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-      return pair<bool, vector<unsigned int>>(false, vector<unsigned int>());
+      return Attribute::findIrrelevantValuesAndCheckTauContiguity(attributeBegin, attributeEnd);
     }
-  vector<unsigned int> newIrrelevantValueOriginalIds;
-  newIrrelevantValueOriginalIds.reserve(potential.size());
   const double tau = tauVector[id];
   const vector<double>& timestamps = timestampsVector[id];
-  vector<Value*>::iterator lowerPotentialBorderIt = lower_bound(potential.begin(), potential.end(), present.front(), Value::smallerId);
-  vector<Value*>::const_iterator upperPotentialBorderIt = lower_bound(potential.begin(), potential.end(), present.back(), Value::smallerId);
-  if (lowerPotentialBorderIt != potential.end())
+  const vector<Value*>::iterator potentialBegin = values.begin() + potentialIndex;
+  vector<Value*>::iterator potentialEnd = values.begin() + irrelevantIndex;
+  vector<Value*>::iterator lowerPotentialBorderIt = lower_bound(potentialBegin, potentialEnd, values.front(), Value::smallerDataId);
+  vector<Value*>::iterator upperPotentialBorderIt = lower_bound(potentialBegin, potentialEnd, *(potentialBegin - 1), Value::smallerDataId);
+  if (lowerPotentialBorderIt != potentialEnd)
     {
       // There are some potential values that are greater than the smallest present value
-      list<unsigned int>::iterator irrelevantValueIdIt = lower_bound(irrelevantValueIds.irrelevantValueIds.begin(), irrelevantValueIds.irrelevantValueIds.end(), (*lowerPotentialBorderIt)->getId());
       // Values between the lowest and the greatest present timestamps
-      vector<Value*>::const_iterator presentIt = present.begin();
-      double presentTimestamp = timestamps[(*presentIt)->getOriginalId()];
+      vector<Value*>::const_iterator presentIt = values.begin();
+      double presentTimestamp = timestamps[(*presentIt)->getDataId()];
       double scopeTimestamp = presentTimestamp;
-      for (vector<Value*>::const_iterator potentialIt = lowerPotentialBorderIt; potentialIt != upperPotentialBorderIt; )
+      for (vector<Value*>::iterator potentialIt = lowerPotentialBorderIt; potentialIt != upperPotentialBorderIt; )
 	{
 	  // Increase scopeTimestamp w.r.t. present timestamps within scope
-	  while (presentTimestamp <= scopeTimestamp && presentIt != present.end())
+	  while (presentTimestamp <= scopeTimestamp && presentIt != potentialBegin)
 	    {
 	      scopeTimestamp = presentTimestamp + tau;
-	      if (++presentIt != present.end())
+	      if (++presentIt != potentialBegin)
 		{
-		  presentTimestamp = timestamps[(*presentIt)->getOriginalId()];
+		  presentTimestamp = timestamps[(*presentIt)->getDataId()];
 		}
 	    }
-	  const unsigned int potentialId = (*potentialIt)->getId();
-	  const unsigned int potentialOriginalId = (*potentialIt)->getOriginalId();
-	  if (irrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.end() && *irrelevantValueIdIt == potentialId)
+	  if (valueDoesNotExtendPresent(**potentialIt, attributeBegin, attributeEnd))
 	    {
-	      ++potentialIt;
-	      ++irrelevantValueIdIt;
+	      const vector<Value*>::iterator nextPotentialIt = potentialIt + 1;
+	      if (nextPotentialIt == upperPotentialBorderIt && presentIt != potentialBegin)
+		{
+#ifdef DEBUG
+		  cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
+#endif
+		  return true;
+		}
+	      rotate(potentialIt, nextPotentialIt, potentialEnd--);
+	      --irrelevantIndex;
 	    }
 	  else
 	    {
-	      if (valueDoesNotExtendPresent(**potentialIt, attributeBegin, attributeEnd))
+	      // Check tau-contiguity
+	      const double potentialTimestamp = timestamps[(*potentialIt)->getDataId()];
+	      if (potentialTimestamp > scopeTimestamp)
 		{
-		  if (++potentialIt == upperPotentialBorderIt && presentIt != present.end())
-		    {
-#ifdef DETAILED_TIME
-		      propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
 #ifdef DEBUG
-		      cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
+		  cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
 #endif
-		      return pair<bool, vector<unsigned int>>(true, vector<unsigned int>());
-		    }
-		  irrelevantValueIds.irrelevantValueIds.insert(irrelevantValueIdIt, potentialId);
-		  newIrrelevantValueOriginalIds.push_back(potentialOriginalId);
+		  return true;
 		}
-	      else
+	      // Increase (if possible) scopeTimestamp w.r.t. potentialTimestamp
+	      const double scopePotentialTimestamp = potentialTimestamp + tau;
+	      if (scopePotentialTimestamp > scopeTimestamp)
 		{
-		  // Check tau-contiguity
-		  const double potentialTimestamp = timestamps[potentialOriginalId];
-		  if (potentialTimestamp > scopeTimestamp)
-		    {
-#ifdef DETAILED_TIME
-		      propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-#ifdef DEBUG
-		      cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
-#endif
-		      return pair<bool, vector<unsigned int>>(true, vector<unsigned int>());
-		    }
-		  // Increase (if possible) scopeTimestamp w.r.t. potentialTimestamp
-		  const double scopePotentialTimestamp = potentialTimestamp + tau;
-		  if (scopePotentialTimestamp > scopeTimestamp)
-		    {
-		      scopeTimestamp = scopePotentialTimestamp;
-		    }
-		  ++potentialIt;
+		  scopeTimestamp = scopePotentialTimestamp;
 		}
+	      ++potentialIt;
 	    }
 	}
     }
   // Values beyond the greatest present timestamp
-  if (upperPotentialBorderIt != potential.end())
+  if (upperPotentialBorderIt != potentialEnd)
     {
       // There are some potential values that are greater than the largest present value
-      list<unsigned int>::iterator upperIrrelevantValueIdIt = lower_bound(irrelevantValueIds.irrelevantValueIds.begin(), irrelevantValueIds.irrelevantValueIds.end(), (*upperPotentialBorderIt)->getId());
-      double scopeTimestamp = timestamps[present.back()->getOriginalId()] + tau;
-      for (; upperPotentialBorderIt != potential.end(); ++upperPotentialBorderIt)
+      double scopeTimestamp = timestamps[(*(potentialBegin - 1))->getDataId()] + tau;
+      while (upperPotentialBorderIt != potentialEnd)
 	{
 	  // Check tau-contiguity
-	  const double nextTimestamp = timestamps[(*upperPotentialBorderIt)->getOriginalId()];
+	  const double nextTimestamp = timestamps[(*upperPotentialBorderIt)->getDataId()];
 	  if (nextTimestamp > scopeTimestamp)
 	    {
 #ifdef DEBUG
 	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beyond " << scopeTimestamp << " is irrelevant" << endl;
 #endif
-	      for (vector<Value*>::const_iterator tauFarValueIt = upperPotentialBorderIt; tauFarValueIt != potential.end(); ++tauFarValueIt)
+	      while (upperPotentialBorderIt != potentialEnd--)
 		{
-		  if (upperIrrelevantValueIdIt == irrelevantValueIds.irrelevantValueIds.end() || *upperIrrelevantValueIdIt != (*tauFarValueIt)->getId())
-		    {
-		      upperIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.insert(upperIrrelevantValueIdIt, (*tauFarValueIt)->getId());
-		      newIrrelevantValueOriginalIds.push_back((*tauFarValueIt)->getOriginalId());
-		    }
-		  ++upperIrrelevantValueIdIt;
+		  --irrelevantIndex;
 		}
 	      break;
 	    }
-	  const unsigned int upperPotentialBorderId = (*upperPotentialBorderIt)->getId();
-	  if (upperIrrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.end() && *upperIrrelevantValueIdIt == upperPotentialBorderId)
+	  if (valueDoesNotExtendPresent(**upperPotentialBorderIt, attributeBegin, attributeEnd))
 	    {
-	      ++upperIrrelevantValueIdIt;
+	      rotate(upperPotentialBorderIt, upperPotentialBorderIt + 1, potentialEnd--);
 	    }
 	  else
 	    {
-	      if (valueDoesNotExtendPresent(**upperPotentialBorderIt, attributeBegin, attributeEnd))
-		{
-		  irrelevantValueIds.irrelevantValueIds.insert(upperIrrelevantValueIdIt, upperPotentialBorderId);
-		  newIrrelevantValueOriginalIds.push_back((*upperPotentialBorderIt)->getOriginalId());
-		}
-	      else
-		{
-		  scopeTimestamp = nextTimestamp + tau;
-		}
+	      scopeTimestamp = nextTimestamp + tau;
+	      ++upperPotentialBorderIt;
 	    }
 	}
       eraseAbsentValuesBeyondTimestamp(scopeTimestamp);
     }
   // Values beneath the lowest present timestamp
-  if (lowerPotentialBorderIt != potential.begin())
+  if (lowerPotentialBorderIt != potentialBegin)
     {
       // There are some potential values that are lower than the smallest present value
-      list<unsigned int>::iterator lowerIrrelevantValueIdIt;
-      if (lowerPotentialBorderIt == potential.end())
-	{
-	  lowerIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.end();
-	}
-      else
-	{
-	  lowerIrrelevantValueIdIt = lower_bound(irrelevantValueIds.irrelevantValueIds.begin(), irrelevantValueIds.irrelevantValueIds.end(), (*lowerPotentialBorderIt)->getId()); // cannot be computed before (case: all values in irrelevantValueIds, if any, were smaller than present.front() at the call)
-	}
-      if (lowerIrrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.begin())
-	{
-	  --lowerIrrelevantValueIdIt;
-	}
-      double scopeTimestamp = timestamps[present.front()->getOriginalId()] - tau;
+      double scopeTimestamp = timestamps[values.front()->getDataId()] - tau;
       do
 	{
 	  // Check tau-contiguity
-	  const double nextTimestamp = timestamps[(*(--lowerPotentialBorderIt))->getOriginalId()];
+	  const double nextTimestamp = timestamps[(*(--lowerPotentialBorderIt))->getDataId()];
 	  if (nextTimestamp < scopeTimestamp)
 	    {
 #ifdef DEBUG
 	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beneath " << scopeTimestamp << " is irrelevant" << endl;
 #endif
-	      list<unsigned int>::iterator insertIt = irrelevantValueIds.irrelevantValueIds.begin();
-	      for (vector<Value*>::const_iterator tauFarValueIt = potential.begin(); tauFarValueIt != lowerPotentialBorderIt + 1; ++tauFarValueIt)
+	      rotate(potentialBegin, ++lowerPotentialBorderIt, potentialEnd);
+	      for (; lowerPotentialBorderIt != potentialBegin; --lowerPotentialBorderIt)
 		{
-		  const unsigned int tauFarValueId = (*tauFarValueIt)->getId();
-		  if (insertIt == irrelevantValueIds.irrelevantValueIds.end() || *insertIt != tauFarValueId)
-		    {
-		      insertIt = irrelevantValueIds.irrelevantValueIds.insert(insertIt, tauFarValueId);
-		      newIrrelevantValueOriginalIds.push_back((*tauFarValueIt)->getOriginalId());
-		    }
-		  ++insertIt;
+		  --irrelevantIndex;
 		}
 	      break;
 	    }
-	  if (lowerIrrelevantValueIdIt == irrelevantValueIds.irrelevantValueIds.end())
+	  if (valueDoesNotExtendPresent(**lowerPotentialBorderIt, attributeBegin, attributeEnd))
 	    {
-	      if (valueDoesNotExtendPresent(**lowerPotentialBorderIt, attributeBegin, attributeEnd))
-		{
-		  lowerIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.insert(lowerIrrelevantValueIdIt, (*lowerPotentialBorderIt)->getId());
-		  newIrrelevantValueOriginalIds.push_back((*lowerPotentialBorderIt)->getOriginalId());
-		}
-	      else
-		{
-		  scopeTimestamp = nextTimestamp - tau;
-		}
+	      rotate(lowerPotentialBorderIt, lowerPotentialBorderIt + 1, potentialEnd--);
+	      --irrelevantIndex;
 	    }
 	  else
 	    {
-	      const unsigned int lowerPotentialBorderId = (*lowerPotentialBorderIt)->getId();
-	      if (lowerPotentialBorderId < *lowerIrrelevantValueIdIt)
-		{
-		  // Here lowerIrrelevantValueIdIt == irrelevantValueIds.irrelevantValueIds.begin() holds
-		  if (valueDoesNotExtendPresent(**lowerPotentialBorderIt, attributeBegin, attributeEnd))
-		    {
-		      lowerIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.insert(lowerIrrelevantValueIdIt, lowerPotentialBorderId);
-		      newIrrelevantValueOriginalIds.push_back((*lowerPotentialBorderIt)->getOriginalId());
-		    }
-		  else
-		    {
-		      scopeTimestamp = nextTimestamp - tau;
-		    }
-		}
-	      else
-		{
-		  if (lowerPotentialBorderId == *lowerIrrelevantValueIdIt)
-		    {
-		      if (lowerIrrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.begin())
-			{
-			  --lowerIrrelevantValueIdIt;
-			}
-		    }
-		  else
-		    {
-		      if (valueDoesNotExtendPresent(**lowerPotentialBorderIt, attributeBegin, attributeEnd))
-			{
-			  lowerIrrelevantValueIdIt = --(irrelevantValueIds.irrelevantValueIds.insert(++lowerIrrelevantValueIdIt, lowerPotentialBorderId));
-			  newIrrelevantValueOriginalIds.push_back((*lowerPotentialBorderIt)->getOriginalId());
-			}
-		      else
-			{
-			  scopeTimestamp = nextTimestamp - tau;
-			}
-		    }
-		}
+	      scopeTimestamp = nextTimestamp - tau;
 	    }
-	} while (lowerPotentialBorderIt != potential.begin());
+	} while (lowerPotentialBorderIt != potentialBegin);
       eraseAbsentValuesBeneathTimestamp(scopeTimestamp);
     }
-#ifdef DETAILED_TIME
-  propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-  return pair<bool, vector<unsigned int>>(false, newIrrelevantValueOriginalIds);
+  return false;
 }
 
 #ifdef MIN_SIZE_ELEMENT_PRUNING
-// CLEAN: Like findIrrelevantValuesAndCheckConstraints but presentAndPotentialIrrelevantValue replaces irrelevantValue (factorize?)
-pair<bool, vector<unsigned int>> MetricAttribute::findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(const unsigned int presentAndPotentialIrrelevancyThreshold, IrrelevantValueIds& irrelevantValueIds)
+pair<bool, vector<unsigned int>> MetricAttribute::findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(const unsigned int presentAndPotentialIrrelevancyThreshold)
 {
-  if (present.empty())
+  if (potentialIndex == absentIndex)
     {
-      return Attribute::findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(presentAndPotentialIrrelevancyThreshold, irrelevantValueIds);
-    }
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  if (potential.empty())
-    {
-#ifdef DETAILED_TIME
-      propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
       return pair<bool, vector<unsigned int>>(false, vector<unsigned int>());
     }
-  vector<unsigned int> newIrrelevantValueOriginalIds;
-  newIrrelevantValueOriginalIds.reserve(potential.size());
+  if (potentialIndex == 0)
+    {
+      return Attribute::findPresentAndPotentialIrrelevantValuesAndCheckTauContiguity(presentAndPotentialIrrelevancyThreshold);
+    }
+  vector<unsigned int> newIrrelevantValueDataIds;
   const double tau = tauVector[id];
   const vector<double>& timestamps = timestampsVector[id];
-  vector<Value*>::iterator lowerPotentialBorderIt = lower_bound(potential.begin(), potential.end(), present.front(), Value::smallerId);
-  vector<Value*>::const_iterator upperPotentialBorderIt = lower_bound(potential.begin(), potential.end(), present.back(), Value::smallerId);
-  if (lowerPotentialBorderIt != potential.end())
+  const vector<Value*>::iterator potentialBegin = values.begin() + potentialIndex;
+  vector<Value*>::iterator potentialEnd = values.begin() + irrelevantIndex;
+  vector<Value*>::iterator lowerPotentialBorderIt = lower_bound(potentialBegin, potentialEnd, values.front(), Value::smallerDataId);
+  vector<Value*>::iterator upperPotentialBorderIt = lower_bound(potentialBegin, potentialEnd, *(potentialBegin - 1), Value::smallerDataId);
+  if (lowerPotentialBorderIt != potentialEnd)
     {
       // There are some potential values that are greater than the smallest present value
-      list<unsigned int>::iterator irrelevantValueIdIt = lower_bound(irrelevantValueIds.irrelevantValueIds.begin(), irrelevantValueIds.irrelevantValueIds.end(), (*lowerPotentialBorderIt)->getId());
       // Values between the lowest and the greatest present timestamps
-      vector<Value*>::const_iterator presentIt = present.begin();
-      double presentTimestamp = timestamps[(*presentIt)->getOriginalId()];
+      vector<Value*>::const_iterator presentIt = values.begin();
+      double presentTimestamp = timestamps[(*presentIt)->getDataId()];
       double scopeTimestamp = presentTimestamp;
-      for (vector<Value*>::const_iterator potentialIt = lowerPotentialBorderIt; potentialIt != upperPotentialBorderIt; )
+      for (vector<Value*>::iterator potentialValueIt = lowerPotentialBorderIt; potentialValueIt != upperPotentialBorderIt; )
 	{
 	  // Increase scopeTimestamp w.r.t. present timestamps within scope
-	  while (presentTimestamp <= scopeTimestamp && presentIt != present.end())
+	  while (presentTimestamp <= scopeTimestamp && presentIt != potentialBegin)
 	    {
 	      scopeTimestamp = presentTimestamp + tau;
-	      if (++presentIt != present.end())
+	      if (++presentIt != potentialBegin)
 		{
-		  presentTimestamp = timestamps[(*presentIt)->getOriginalId()];
+		  presentTimestamp = timestamps[(*presentIt)->getDataId()];
 		}
 	    }
-	  const unsigned int potentialId = (*potentialIt)->getId();
-	  const unsigned int potentialOriginalId = (*potentialIt)->getOriginalId();
-	  if (irrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.end() && *irrelevantValueIdIt == potentialId)
+	  if (presentAndPotentialIrrelevantValue(**potentialValueIt, presentAndPotentialIrrelevancyThreshold))
 	    {
-	      ++potentialIt;
-	      ++irrelevantValueIdIt;
+	      newIrrelevantValueDataIds.push_back((*potentialValueIt)->getDataId());
+	      const vector<Value*>::iterator nextPotentialIt = potentialValueIt + 1;
+	      if (nextPotentialIt == upperPotentialBorderIt && presentIt != potentialBegin)
+		{
+#ifdef DEBUG
+		  cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
+#endif
+		  return pair<bool, vector<unsigned int>>(true, newIrrelevantValueDataIds);
+		}
+	      rotate(potentialValueIt, nextPotentialIt, potentialEnd--);
+	      --irrelevantIndex;
 	    }
 	  else
 	    {
-	      if (presentAndPotentialIrrelevantValue(**potentialIt, presentAndPotentialIrrelevancyThreshold))
+	      // Check tau-contiguity
+	      const double potentialTimestamp = timestamps[(*potentialValueIt)->getDataId()];
+	      if (potentialTimestamp > scopeTimestamp)
 		{
-		  if (++potentialIt == upperPotentialBorderIt && presentIt != present.end())
-		    {
-#ifdef DETAILED_TIME
-		      propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
 #ifdef DEBUG
-		      cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
+		  cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
 #endif
-		      return pair<bool, vector<unsigned int>>(true, vector<unsigned int>());
-		    }
-		  irrelevantValueIds.irrelevantValueIds.insert(irrelevantValueIdIt, potentialId);
-		  newIrrelevantValueOriginalIds.push_back(potentialOriginalId);
+		  return pair<bool, vector<unsigned int>>(true, newIrrelevantValueDataIds);
 		}
-	      else
+	      // Increase (if possible) scopeTimestamp w.r.t. potentialTimestamp
+	      const double scopePotentialTimestamp = potentialTimestamp + tau;
+	      if (scopePotentialTimestamp > scopeTimestamp)
 		{
-		  // Check tau-contiguity
-		  const double potentialTimestamp = timestamps[potentialOriginalId];
-		  if (potentialTimestamp > scopeTimestamp)
-		    {
-#ifdef DETAILED_TIME
-		      propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-#ifdef DEBUG
-		      cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
-#endif
-		      return pair<bool, vector<unsigned int>>(true, vector<unsigned int>());
-		    }
-		  // Increase (if possible) scopeTimestamp w.r.t. potentialTimestamp
-		  const double scopePotentialTimestamp = potentialTimestamp + tau;
-		  if (scopePotentialTimestamp > scopeTimestamp)
-		    {
-		      scopeTimestamp = scopePotentialTimestamp;
-		    }
-		  ++potentialIt;
+		  scopeTimestamp = scopePotentialTimestamp;
 		}
+	      ++potentialValueIt;
 	    }
 	}
     }
   // Values beyond the greatest present timestamp
-  if (upperPotentialBorderIt != potential.end())
+  if (upperPotentialBorderIt != potentialEnd)
     {
       // There are some potential values that are greater than the largest present value
-      list<unsigned int>::iterator upperIrrelevantValueIdIt = lower_bound(irrelevantValueIds.irrelevantValueIds.begin(), irrelevantValueIds.irrelevantValueIds.end(), (*upperPotentialBorderIt)->getId());
-      double scopeTimestamp = timestamps[present.back()->getOriginalId()] + tau;
-      for (; upperPotentialBorderIt != potential.end(); ++upperPotentialBorderIt)
+      double scopeTimestamp = timestamps[(*(potentialBegin - 1))->getDataId()] + tau;
+      while (upperPotentialBorderIt != potentialEnd)
 	{
 	  // Check tau-contiguity
-	  const double nextTimestamp = timestamps[(*upperPotentialBorderIt)->getOriginalId()];
+	  const double nextTimestamp = timestamps[(*upperPotentialBorderIt)->getDataId()];
 	  if (nextTimestamp > scopeTimestamp)
 	    {
 #ifdef DEBUG
-	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential or absent value beyond " << scopeTimestamp << " is irrelevant" << endl;
+	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beyond " << scopeTimestamp << " is irrelevant" << endl;
 #endif
-	      for (vector<Value*>::const_iterator tauFarValueIt = upperPotentialBorderIt; tauFarValueIt != potential.end(); ++tauFarValueIt)
+	      while (upperPotentialBorderIt != potentialEnd--)
 		{
-		  const unsigned int tauFarValueId = (*tauFarValueIt)->getId();
-		  if (upperIrrelevantValueIdIt == irrelevantValueIds.irrelevantValueIds.end() || *upperIrrelevantValueIdIt != tauFarValueId)
-		    {
-		      upperIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.insert(upperIrrelevantValueIdIt, tauFarValueId);
-		      newIrrelevantValueOriginalIds.push_back((*tauFarValueIt)->getOriginalId());
-		    }
-		  ++upperIrrelevantValueIdIt;
+		  newIrrelevantValueDataIds.push_back((*potentialEnd)->getDataId());
+		  --irrelevantIndex;
 		}
 	      break;
 	    }
-	  const unsigned int upperPotentialBorderId = (*upperPotentialBorderIt)->getId();
-	  if (upperIrrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.end() && *upperIrrelevantValueIdIt == upperPotentialBorderId)
+	  if (presentAndPotentialIrrelevantValue(**upperPotentialBorderIt, presentAndPotentialIrrelevancyThreshold))
 	    {
-	      ++upperIrrelevantValueIdIt;
+	      rotate(upperPotentialBorderIt, upperPotentialBorderIt + 1, potentialEnd--);
 	    }
 	  else
 	    {
-	      if (presentAndPotentialIrrelevantValue(**upperPotentialBorderIt, presentAndPotentialIrrelevancyThreshold))
-		{
-		  irrelevantValueIds.irrelevantValueIds.insert(upperIrrelevantValueIdIt, upperPotentialBorderId);
-		  newIrrelevantValueOriginalIds.push_back((*upperPotentialBorderIt)->getOriginalId());
-		}
-	      else
-		{
-		  scopeTimestamp = nextTimestamp + tau;
-		}
+	      scopeTimestamp = nextTimestamp + tau;
+	      ++upperPotentialBorderIt;
 	    }
 	}
       eraseAbsentValuesBeyondTimestamp(scopeTimestamp);
     }
   // Values beneath the lowest present timestamp
-  if (lowerPotentialBorderIt != potential.begin())
+  if (lowerPotentialBorderIt != potentialBegin)
     {
       // There are some potential values that are lower than the smallest present value
-      list<unsigned int>::iterator lowerIrrelevantValueIdIt;
-      if (lowerPotentialBorderIt == potential.end())
-	{
-	  lowerIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.end();
-	}
-      else
-	{
-	  lowerIrrelevantValueIdIt = lower_bound(irrelevantValueIds.irrelevantValueIds.begin(), irrelevantValueIds.irrelevantValueIds.end(), (*lowerPotentialBorderIt)->getId()); // cannot be computed before (case: all values in irrelevantValueIds, if any, were smaller than present.front() at the call)
-	}
-      if (lowerIrrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.begin())
-	{
-	  --lowerIrrelevantValueIdIt;
-	}
-      double scopeTimestamp = timestamps[present.front()->getOriginalId()] - tau;
+      double scopeTimestamp = timestamps[values.front()->getDataId()] - tau;
       do
 	{
 	  // Check tau-contiguity
-	  const double nextTimestamp = timestamps[(*(--lowerPotentialBorderIt))->getOriginalId()];
+	  const double nextTimestamp = timestamps[(*(--lowerPotentialBorderIt))->getDataId()];
 	  if (nextTimestamp < scopeTimestamp)
 	    {
 #ifdef DEBUG
-	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential or absent value beneath " << scopeTimestamp << " is irrelevant" << endl;
+	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beneath " << scopeTimestamp << " is irrelevant" << endl;
 #endif
-	      list<unsigned int>::iterator insertIt = irrelevantValueIds.irrelevantValueIds.begin();
-	      for (vector<Value*>::const_iterator tauFarValueIt = potential.begin(); tauFarValueIt != lowerPotentialBorderIt + 1; ++tauFarValueIt)
+	      ++lowerPotentialBorderIt;
+	      for (vector<Value*>::iterator potentialValueIt = potentialBegin; potentialValueIt != lowerPotentialBorderIt; ++potentialValueIt)
 		{
-		  const unsigned int tauFarValueId = (*tauFarValueIt)->getId();
-		  if (insertIt == irrelevantValueIds.irrelevantValueIds.end() || *insertIt != tauFarValueId)
-		    {
-		      insertIt = irrelevantValueIds.irrelevantValueIds.insert(insertIt, tauFarValueId);
-		      newIrrelevantValueOriginalIds.push_back((*tauFarValueIt)->getOriginalId());
-		    }
-		  ++insertIt;
+		  newIrrelevantValueDataIds.push_back((*potentialValueIt)->getDataId());
+		  --irrelevantIndex;
 		}
+	      rotate(potentialBegin, lowerPotentialBorderIt, potentialEnd);
 	      break;
 	    }
-	  if (lowerIrrelevantValueIdIt == irrelevantValueIds.irrelevantValueIds.end())
+	  if (presentAndPotentialIrrelevantValue(**lowerPotentialBorderIt, presentAndPotentialIrrelevancyThreshold))
 	    {
-	      if (presentAndPotentialIrrelevantValue(**lowerPotentialBorderIt, presentAndPotentialIrrelevancyThreshold))
-		{
-		  lowerIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.insert(lowerIrrelevantValueIdIt, (*lowerPotentialBorderIt)->getId());
-		  newIrrelevantValueOriginalIds.push_back((*lowerPotentialBorderIt)->getOriginalId());
-		}
-	      else
-		{
-		  scopeTimestamp = nextTimestamp - tau;
-		}
+	      rotate(lowerPotentialBorderIt, lowerPotentialBorderIt + 1, potentialEnd--);
+	      --irrelevantIndex;
 	    }
 	  else
 	    {
-	      const unsigned int lowerPotentialBorderId = (*lowerPotentialBorderIt)->getId();
-	      if (lowerPotentialBorderId < *lowerIrrelevantValueIdIt)
-		{
-		  // Here lowerIrrelevantValueIdIt == irrelevantValueIds.irrelevantValueIds.begin() holds
-		  if (presentAndPotentialIrrelevantValue(**lowerPotentialBorderIt, presentAndPotentialIrrelevancyThreshold))
-		    {
-		      lowerIrrelevantValueIdIt = irrelevantValueIds.irrelevantValueIds.insert(lowerIrrelevantValueIdIt, lowerPotentialBorderId);
-		      newIrrelevantValueOriginalIds.push_back((*lowerPotentialBorderIt)->getOriginalId());
-		    }
-		  else
-		    {
-		      scopeTimestamp = nextTimestamp - tau;
-		    }
-		}
-	      else
-		{
-		  if (lowerPotentialBorderId == *lowerIrrelevantValueIdIt)
-		    {
-		      if (lowerIrrelevantValueIdIt != irrelevantValueIds.irrelevantValueIds.begin())
-			{
-			  --lowerIrrelevantValueIdIt;
-			}
-		    }
-		  else
-		    {
-		      if (presentAndPotentialIrrelevantValue(**lowerPotentialBorderIt, presentAndPotentialIrrelevancyThreshold))
-			{
-			  lowerIrrelevantValueIdIt = --(irrelevantValueIds.irrelevantValueIds.insert(++lowerIrrelevantValueIdIt, lowerPotentialBorderId));
-			  newIrrelevantValueOriginalIds.push_back((*lowerPotentialBorderIt)->getOriginalId());
-			}
-		      else
-			{
-			  scopeTimestamp = nextTimestamp - tau;
-			}
-		    }
-		}
+	      scopeTimestamp = nextTimestamp - tau;
 	    }
-	} while (lowerPotentialBorderIt != potential.begin());
+	} while (lowerPotentialBorderIt != potentialBegin);
       eraseAbsentValuesBeneathTimestamp(scopeTimestamp);
     }
-#ifdef DETAILED_TIME
-  propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-  return pair<bool, vector<unsigned int>>(false, newIrrelevantValueOriginalIds);
+  return pair<bool, vector<unsigned int>>(false, newIrrelevantValueDataIds);
 }
 #endif
 
@@ -777,12 +551,13 @@ void MetricAttribute::eraseAbsentValuesBeneathTimestamp(const double timestamp)
   cout << "In the " << tauVector[id] << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every absent value beneath " << timestamp << " is removed" << endl;
 #endif
   const vector<double>& timestamps = timestampsVector[id];
-  vector<Value*>::iterator absentValueIt = absent.begin();
-  for (; absentValueIt != absent.end() && timestamps[(*absentValueIt)->getOriginalId()] < timestamp; ++absentValueIt)
+  vector<Value*>::iterator valueIt = values.begin() + absentIndex;
+  const vector<Value*>::iterator absentBegin = valueIt;
+  for (; valueIt != values.end() && timestamps[(*valueIt)->getDataId()] < timestamp; ++valueIt)
     {
-      delete *absentValueIt;
+      delete *valueIt;
     }
-  absent.erase(absent.begin(), absentValueIt);
+  values.erase(absentBegin, valueIt);
 }
 
 void MetricAttribute::eraseAbsentValuesBeyondTimestamp(const double timestamp)
@@ -790,238 +565,237 @@ void MetricAttribute::eraseAbsentValuesBeyondTimestamp(const double timestamp)
 #ifdef DEBUG
   cout << "In the " << tauVector[id] << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every absent value beyond " << timestamp << " is removed" << endl;
 #endif
-  if (!absent.empty())
+  if (absentIndex != values.size())
     {
       const vector<double>& timestamps = timestampsVector[id];
-      if (timestamps[absent.front()->getOriginalId()] > timestamp)
+      vector<Value*>::iterator absentBegin = values.begin() + absentIndex;
+      if (timestamps[(*absentBegin)->getDataId()] > timestamp)
 	{
-	  for (Value* absentValue : absent)
+	  for (vector<Value*>::iterator valueIt = absentBegin; valueIt != values.end(); ++valueIt)
 	    {
-	      delete absentValue;
+	      delete *valueIt;
 	    }
-	  absent.clear();
+	  values.resize(absentIndex);
 	  return;
 	}
-      vector<Value*>::iterator absentValueIt = --(absent.end());
-      for (; timestamps[(*absentValueIt)->getOriginalId()] > timestamp; --absentValueIt)
+      vector<Value*>::iterator valueIt = --(values.end());
+      for (; timestamps[(*valueIt)->getDataId()] > timestamp; --valueIt)
 	{
-	  delete *absentValueIt;
+	  delete *valueIt;
 	}
-      absent.erase(absentValueIt + 1, absent.end());
+      values.erase(valueIt + 1, values.end());
     }
 }
 
-// CLEAN: Like Attribute::closed but the absent range is restricted at the beginning (factorize?)
-// WARNING: the symmetric absent sets must contain the same original ids in the same order
-// WARNING: This must be the last symmetric attribute
-const bool MetricAttribute::closed(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const
+const bool MetricAttribute::unclosed(const vector<Attribute*>::const_iterator attributeBegin, const vector<Attribute*>::const_iterator attributeEnd) const
 {
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  if (present.empty() || absent.empty())
+  if (potentialIndex == 0 || absentIndex == values.size())
     {
-#ifdef DETAILED_TIME
-      closednessCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-      return true;
+      return false;
     }
   const double tau = tauVector[id];
+  const Value* presentBack = values[potentialIndex - 1];
   const vector<double>& timestamps = timestampsVector[id];
-  double scopeTimestamp = timestamps[present.back()->getOriginalId()] + tau;
-  vector<Value*>::const_iterator tauCloseAbsentEnd = lower_bound(absent.begin(), absent.end(), present.back(), Value::smallerId);
-  for (; tauCloseAbsentEnd != absent.end() && timestamps[(*tauCloseAbsentEnd)->getOriginalId()] <= scopeTimestamp; ++tauCloseAbsentEnd)
+  double scopeTimestamp = timestamps[presentBack->getDataId()] + tau;
+  const vector<Value*>::const_iterator absentBegin = values.begin() + absentIndex;
+  const vector<Value*>::const_iterator end = values.end();
+  vector<Value*>::const_iterator tauCloseAbsentEnd = lower_bound(absentBegin, end, presentBack, Value::smallerDataId);
+  for (; tauCloseAbsentEnd != end && timestamps[(*tauCloseAbsentEnd)->getDataId()] <= scopeTimestamp; ++tauCloseAbsentEnd)
     {
     }
-  scopeTimestamp = timestamps[present.front()->getOriginalId()] - tau;
+  scopeTimestamp = timestamps[values.front()->getDataId()] - tau;
   vector<Value*>::const_iterator tauCloseAbsentBegin;
-  if (timestamps[absent.front()->getOriginalId()] < scopeTimestamp)
+  if (timestamps[(*absentBegin)->getDataId()] < scopeTimestamp)
     {
-      tauCloseAbsentBegin = lower_bound(absent.begin(), absent.end(), present.front(), Value::smallerId);
-      while (timestamps[(*(--tauCloseAbsentBegin))->getOriginalId()] >= scopeTimestamp)
+      tauCloseAbsentBegin = lower_bound(absentBegin, end, values.front(), Value::smallerDataId);
+      while (timestamps[(*(--tauCloseAbsentBegin))->getDataId()] >= scopeTimestamp)
 	{
 	}
       ++tauCloseAbsentBegin;
     }
   else
     {
-      tauCloseAbsentBegin = absent.begin();
+      tauCloseAbsentBegin = absentBegin;
     }
   for (; tauCloseAbsentBegin != tauCloseAbsentEnd && valueDoesNotExtendPresentAndPotential(**tauCloseAbsentBegin, attributeBegin, attributeEnd); ++tauCloseAbsentBegin)
     {
     }
-#ifdef DETAILED_TIME
-  closednessCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
 #ifdef DEBUG
   if (tauCloseAbsentBegin != tauCloseAbsentEnd)
     {
-      cout << labelsVector[id][(*tauCloseAbsentBegin)->getOriginalId()] << " in attribute " << internal2ExternalAttributeOrder[id] << " extends any future pattern -> Prune!" << endl;
+      cout << labelsVector[id][(*tauCloseAbsentBegin)->getDataId()] << " in attribute " << internal2ExternalAttributeOrder[id] << " extends any future pattern -> Prune!" << endl;
     }
 #endif
-  return tauCloseAbsentBegin == tauCloseAbsentEnd;
+  return tauCloseAbsentBegin != tauCloseAbsentEnd;
 }
 
-void MetricAttribute::absentValueToCleanFound(vector<Value*>::iterator& absentValueIt)
+void MetricAttribute::removeAbsentValue(vector<Value*>::iterator& valueIt)
 {
 #ifdef DEBUG
-  cout << labelsVector[id][(*absentValueIt)->getOriginalId()] << " in attribute " << internal2ExternalAttributeOrder[id] << " will never extend any future pattern" << endl;
+  cout << labelsVector[id][(*valueIt)->getDataId()] << " in attribute " << internal2ExternalAttributeOrder[id] << " will never extend any future pattern" << endl;
 #endif
-  delete *absentValueIt;
-  absentValueIt = absent.erase(absentValueIt);
+  delete *valueIt;
+  valueIt = values.erase(valueIt);
 }
 
-pair<const bool, vector<unsigned int>> MetricAttribute::tauFarValueOriginalValueIdsAndCheckConstraints(const Value* absentValue)
+pair<const bool, vector<unsigned int>> MetricAttribute::tauFarValueDataIdsAndCheckTauContiguity()
 {
-  if (present.empty())
+  const unsigned int minPresentDataId = values.front()->getDataId();
+  if (potentialIndex == 0)
     {
-      return pair<const bool, vector<unsigned int>>(false, vector<unsigned int>());
+      return pair<const bool, vector<unsigned int>>(false, vector<unsigned int> {minPresentDataId});
     }
+  vector<Value*>::iterator potentialBegin = values.begin() + potentialIndex;
+  const unsigned int absentValueDataId = (*potentialBegin)->getDataId();
+  vector<unsigned int> irrelevantValueDataIds {absentValueDataId};
   const double tau = tauVector[id];
   const vector<double>& timestamps = timestampsVector[id];
-  const vector<Value*>::iterator lowerPotentialBorderIt = lower_bound(potential.begin(), potential.end(), absentValue, Value::smallerId);
-  const unsigned int absentValueId = absentValue->getId();
-  const unsigned int minPresentId = present.front()->getId();
-  if (minPresentId > absentValueId)
+  vector<Value*>::iterator potentialEnd = values.begin() + irrelevantIndex;
+  // PERF: binary search
+  vector<Value*>::iterator lowerPotentialBorderIt = ++potentialBegin;
+  for (; lowerPotentialBorderIt != potentialEnd && (*lowerPotentialBorderIt)->getDataId() < absentValueDataId; ++lowerPotentialBorderIt)
+    {
+    }
+  if (minPresentDataId > absentValueDataId)
     {
       // absentValue is beneath the present range
-      vector<unsigned int> irrelevantValueOriginalIds;
-      irrelevantValueOriginalIds.reserve(potential.size());
       double scopeTimestamp;
-      if (lowerPotentialBorderIt != potential.end() && (*lowerPotentialBorderIt)->getId() < minPresentId)
+      if (lowerPotentialBorderIt != potentialEnd && (*lowerPotentialBorderIt)->getDataId() < minPresentDataId)
 	{
-	  scopeTimestamp = timestamps[(*lowerPotentialBorderIt)->getOriginalId()] - tau;
+	  scopeTimestamp = timestamps[(*lowerPotentialBorderIt)->getDataId()] - tau;
 	}
       else
 	{
-	  scopeTimestamp = timestamps[present.front()->getOriginalId()] - tau;
+	  scopeTimestamp = timestamps[values.front()->getDataId()] - tau;
 	}
-      if (lowerPotentialBorderIt == potential.begin())
+      if (lowerPotentialBorderIt == potentialBegin)
 	{
 	  eraseAbsentValuesBeneathTimestamp(scopeTimestamp);
+	  return pair<const bool, vector<unsigned int>>(false, irrelevantValueDataIds);
 	}
-      else
+      if (scopeTimestamp > timestamps[(*(lowerPotentialBorderIt - 1))->getDataId()])
 	{
-	  if (scopeTimestamp > timestamps[(*(lowerPotentialBorderIt - 1))->getOriginalId()])
-	    {
 #ifdef DEBUG
-	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beneath " << scopeTimestamp << " is irrelevant" << endl;
+	  cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beneath " << scopeTimestamp << " is irrelevant" << endl;
 #endif
-	      // Potential values with too small timestamps are irrelevant
-	      for (vector<Value*>::iterator tauFarPotentialValueIt = potential.begin(); tauFarPotentialValueIt != lowerPotentialBorderIt; ++tauFarPotentialValueIt)
-		{
-		  irrelevantValueOriginalIds.push_back((*tauFarPotentialValueIt)->getOriginalId());
-		  delete *tauFarPotentialValueIt;
-		}
-	      potential.erase(potential.begin(), lowerPotentialBorderIt);
-	      eraseAbsentValuesBeneathTimestamp(scopeTimestamp);
+	  // Potential values with too small timestamps are irrelevant
+	  irrelevantValueDataIds.reserve(irrelevantIndex - potentialIndex);
+	  for (vector<Value*>::iterator tauFarPotentialValueIt = potentialBegin; tauFarPotentialValueIt != lowerPotentialBorderIt; ++tauFarPotentialValueIt)
+	    {
+	      irrelevantValueDataIds.push_back((*tauFarPotentialValueIt)->getDataId());
+	      delete *tauFarPotentialValueIt;
 	    }
+	  const unsigned int nbOfValueBeforeErasure = values.size();
+	  values.erase(potentialBegin, lowerPotentialBorderIt);
+	  irrelevantIndex -= nbOfValueBeforeErasure - values.size();
+	  absentIndex = irrelevantIndex;
+	  eraseAbsentValuesBeneathTimestamp(scopeTimestamp);
 	}
-      return pair<const bool, vector<unsigned int>>(false, irrelevantValueOriginalIds);
+      return pair<const bool, vector<unsigned int>>(false, irrelevantValueDataIds);
     }
-  const unsigned int maxPresentId = present.back()->getId();
-  if (maxPresentId < absentValueId)
+  const unsigned int maxPresentDataId = (*(potentialBegin - 2))->getDataId();
+  if (maxPresentDataId < absentValueDataId)
     {
       // absentValue is beyond the present range
-      vector<unsigned int> irrelevantValueOriginalIds;
-      irrelevantValueOriginalIds.reserve(potential.size());
-      if (lowerPotentialBorderIt == potential.end())
+      if (lowerPotentialBorderIt == potentialEnd)
 	{
-	  if (potential.empty() || potential.back()->getId() < maxPresentId)
+	  const unsigned int maxPotentialDataId = (*(potentialEnd - 1))->getDataId();
+	  if (potentialIndex == irrelevantIndex || maxPotentialDataId < maxPresentDataId)
 	    {
-	      eraseAbsentValuesBeyondTimestamp(timestamps[present.back()->getOriginalId()] + tau);
+	      eraseAbsentValuesBeyondTimestamp(timestamps[maxPresentDataId] + tau);
+	      return pair<const bool, vector<unsigned int>>(false, irrelevantValueDataIds);
 	    }
-	  else
-	    {
-	      eraseAbsentValuesBeyondTimestamp(timestamps[potential.back()->getOriginalId()] + tau);
-	    }
+	  eraseAbsentValuesBeyondTimestamp(timestamps[maxPotentialDataId] + tau);
+	  return pair<const bool, vector<unsigned int>>(false, irrelevantValueDataIds);
+	}
+      double scopeTimestamp;
+      if (lowerPotentialBorderIt == potentialBegin)
+	{
+	  scopeTimestamp = timestamps[maxPresentDataId] + tau;
 	}
       else
 	{
-	  double scopeTimestamp;
-	  if (lowerPotentialBorderIt == potential.begin())
+	  if ((*(lowerPotentialBorderIt - 1))->getDataId() < maxPresentDataId)
 	    {
-	      scopeTimestamp = timestamps[present.back()->getOriginalId()] + tau;
+	      scopeTimestamp = timestamps[maxPresentDataId] + tau;
 	    }
 	  else
 	    {
-	      if ((*(lowerPotentialBorderIt - 1))->getId() < maxPresentId)
-		{
-		  scopeTimestamp = timestamps[present.back()->getOriginalId()] + tau;
-		}
-	      else
-		{
-		  scopeTimestamp = timestamps[(*(lowerPotentialBorderIt - 1))->getOriginalId()] + tau;
-		}
-	    }
-	  if (scopeTimestamp < timestamps[(*lowerPotentialBorderIt)->getOriginalId()])
-	    {
-#ifdef DEBUG
-	      cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beyond " << scopeTimestamp << " is irrelevant" << endl;
-#endif
-	      // Potential values with too great timestamps are irrelevant
-	      for (vector<Value*>::iterator tauFarPotentialValueIt = lowerPotentialBorderIt; tauFarPotentialValueIt != potential.end(); ++tauFarPotentialValueIt)
-		{
-		  irrelevantValueOriginalIds.push_back((*tauFarPotentialValueIt)->getOriginalId());
-		  delete *tauFarPotentialValueIt;
-		}
-	      potential.erase(lowerPotentialBorderIt, potential.end());
-	      eraseAbsentValuesBeyondTimestamp(scopeTimestamp);
+	      scopeTimestamp = timestamps[(*(lowerPotentialBorderIt - 1))->getDataId()] + tau;
 	    }
 	}
-      return pair<const bool, vector<unsigned int>>(false, irrelevantValueOriginalIds);
+      if (scopeTimestamp < timestamps[(*lowerPotentialBorderIt)->getDataId()])
+	{
+#ifdef DEBUG
+	  cout << "In the " << tau << "-contiguous attribute " << internal2ExternalAttributeOrder[id] << ", every potential value beyond " << scopeTimestamp << " is irrelevant" << endl;
+#endif
+	  // Potential values with too great timestamps are irrelevant
+	  irrelevantValueDataIds.reserve(irrelevantIndex - potentialIndex);
+	  for (vector<Value*>::iterator tauFarPotentialValueIt = lowerPotentialBorderIt; tauFarPotentialValueIt != potentialEnd; ++tauFarPotentialValueIt)
+	    {
+	      irrelevantValueDataIds.push_back((*tauFarPotentialValueIt)->getDataId());
+	      delete *tauFarPotentialValueIt;
+	    }
+	  const unsigned int nbOfValueBeforeErasure = values.size();
+	  values.erase(lowerPotentialBorderIt, potentialEnd);
+	  irrelevantIndex -= nbOfValueBeforeErasure - values.size();
+	  absentIndex = irrelevantIndex;
+	  eraseAbsentValuesBeyondTimestamp(scopeTimestamp);
+	}
+      return pair<const bool, vector<unsigned int>>(false, irrelevantValueDataIds);
     }
   // absentValue is inside the present range
-  const vector<Value*>::iterator lowerPresentBorderIt = lower_bound(present.begin(), present.end(), absentValue, Value::smallerId);
-  double previousTimestamp;
-  if (lowerPotentialBorderIt == potential.begin())
+  // PERF: binary search
+  vector<Value*>::iterator lowerPresentBorderIt = values.begin();
+  const vector<Value*>::const_iterator presentEnd = lowerPresentBorderIt + potentialIndex;
+  for (; lowerPresentBorderIt != presentEnd && (*lowerPresentBorderIt)->getDataId() < absentValueDataId; ++lowerPresentBorderIt)
     {
-      previousTimestamp = timestamps[(*(lowerPresentBorderIt - 1))->getOriginalId()];
+    }
+  double previousTimestamp;
+  if (lowerPotentialBorderIt == potentialBegin)
+    {
+      previousTimestamp = timestamps[(*(lowerPresentBorderIt - 1))->getDataId()];
     }
   else
     {
-      previousTimestamp = timestamps[max((*(lowerPresentBorderIt - 1))->getOriginalId(), (*(lowerPotentialBorderIt - 1))->getOriginalId())];
+      previousTimestamp = timestamps[max((*(lowerPresentBorderIt - 1))->getDataId(), (*(lowerPotentialBorderIt - 1))->getDataId())];
     }
   double nextTimestamp;
-  if (lowerPotentialBorderIt == potential.end())
+  if (lowerPotentialBorderIt == potentialEnd)
     {
-      nextTimestamp = timestamps[(*lowerPresentBorderIt)->getOriginalId()];
+      nextTimestamp = timestamps[(*lowerPresentBorderIt)->getDataId()];
     }
   else
     {
-      nextTimestamp = timestamps[min((*lowerPresentBorderIt)->getOriginalId(), (*lowerPotentialBorderIt)->getOriginalId())];
+      nextTimestamp = timestamps[min((*lowerPresentBorderIt)->getDataId(), (*lowerPotentialBorderIt)->getDataId())];
     }
   if (previousTimestamp + tau < nextTimestamp)
     {
 #ifdef DEBUG
       cout << tau << "-contiguity constraint on attribute " << internal2ExternalAttributeOrder[id] << " not verified -> Prune!" << endl;
 #endif
-      return pair<const bool, vector<unsigned int>>(true, vector<unsigned int>());
+      return pair<const bool, vector<unsigned int>>(true, irrelevantValueDataIds);
     }
-  return pair<const bool, vector<unsigned int>>(false, vector<unsigned int>());
+  return pair<const bool, vector<unsigned int>>(false, irrelevantValueDataIds);
 }
 
 const bool MetricAttribute::finalizable() const
 {
-  return (!present.empty() || potential.empty()) && Attribute::finalizable();
+  return (potentialIndex != 0 || potentialIndex == absentIndex) && Attribute::finalizable();
 }
 
 vector<unsigned int> MetricAttribute::finalize()
 {
-#ifdef DETAILED_TIME
-  const steady_clock::time_point startingPoint = steady_clock::now();
-#endif
-  vector<unsigned int> originalIdsOfValuesSetPresent;
-  originalIdsOfValuesSetPresent.reserve(potential.size());
+  vector<unsigned int> dataIdsOfValuesSetPresent;
+  dataIdsOfValuesSetPresent.reserve(absentIndex - potentialIndex);
   // WARNING: present and potential must be ordered
-  for (Value* potentialValue : potential)
+  const vector<Value*>::iterator begin = values.begin() + potentialIndex;
+  const vector<Value*>::iterator end = values.begin() + absentIndex;
+  for (vector<Value*>::iterator valueIt = begin; valueIt != end; ++valueIt)
     {
-      present.insert(lower_bound(present.begin(), present.end(), potentialValue, Value::smallerId), potentialValue);
-      originalIdsOfValuesSetPresent.push_back(potentialValue->getOriginalId());
+      dataIdsOfValuesSetPresent.push_back((*valueIt)->getDataId());
     }
-  potential.clear();
-#ifdef DETAILED_TIME
-  propagationCheckingDuration += duration_cast<duration<double>>(steady_clock::now() - startingPoint).count();
-#endif
-  return originalIdsOfValuesSetPresent;
+  inplace_merge(values.begin(), begin, end, Value::smallerDataId);
+  potentialIndex = absentIndex;
+  return dataIdsOfValuesSetPresent;
 }

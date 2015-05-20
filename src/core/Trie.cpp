@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -18,7 +18,7 @@ Trie::Trie(const Trie& otherTrie): hyperplanes()
   copy(otherTrie);
 }
 
-Trie::Trie(Trie&& otherTrie): hyperplanes(otherTrie.hyperplanes)
+Trie::Trie(Trie&& otherTrie): hyperplanes(std::move(otherTrie.hyperplanes))
 {
 }
 
@@ -77,7 +77,7 @@ Trie& Trie::operator=(const Trie& otherTrie)
 
 Trie& Trie::operator=(Trie&& otherTrie)
 {
-  hyperplanes = otherTrie.hyperplanes;
+  hyperplanes = std::move(otherTrie.hyperplanes);
   return *this;
 }
 
@@ -118,7 +118,7 @@ void Trie::print(vector<unsigned int>& prefix, ostream& out) const
     }
 }
 
-void Trie::setHyperplane(const unsigned int hyperplaneOldId, const unordered_map<vector<unsigned int>, double, vector_hash<unsigned int>>::const_iterator begin, const unordered_map<vector<unsigned int>, double, vector_hash<unsigned int>>::const_iterator end, const vector<unsigned int>& attributeOrder, const vector<unordered_map<unsigned int, unsigned int>>& oldIds2NewIds, vector<Attribute*>& attributes)
+void Trie::setHyperplane(const unsigned int hyperplaneOldId, const unordered_map<vector<unsigned int>, double, vector_hash<unsigned int>>::const_iterator begin, const unordered_map<vector<unsigned int>, double, vector_hash<unsigned int>>::const_iterator end, const vector<unsigned int>& attributeOrder, const vector<vector<unsigned int>>& oldIds2NewIds, vector<Attribute*>& attributes)
 {
   const vector<Attribute*>::iterator nextAttributeIt = attributes.begin() + 1;
   const unsigned int hyperplaneId = oldIds2NewIds.front().at(hyperplaneOldId);
@@ -134,11 +134,11 @@ void Trie::setHyperplane(const unsigned int hyperplaneOldId, const unordered_map
 	  AbstractData* newHyperplane;
 	  if (isCrisp)
 	    {
-	      newHyperplane = new DenseCrispTube(static_cast<SparseCrispTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPotential());
+	      newHyperplane = new DenseCrispTube(static_cast<SparseCrispTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPresentAndPotential());
 	    }
 	  else
 	    {
-	      newHyperplane = new DenseFuzzyTube(static_cast<SparseFuzzyTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPotential());
+	      newHyperplane = new DenseFuzzyTube(static_cast<SparseFuzzyTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPresentAndPotential());
 	    }
 	  delete hyperplane;
 	  hyperplane = newHyperplane;
@@ -155,21 +155,35 @@ void Trie::setSelfLoops(const unsigned int firstSymmetricAttributeId, const unsi
   setSelfLoopsBeforeSymmetricAttributes(firstSymmetricAttributeId, lastSymmetricAttributeId, attributes.begin(), intersectionIts, 0);
 }
 
-void Trie::setPresent(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeBegin) const
+void Trie::setPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeBegin) const
 {
   vector<vector<vector<unsigned int>>::iterator> intersectionIts;
   intersectionIts.reserve(Attribute::lastAttributeId());
-  setPresent(presentAttributeIt, presentValue, attributeBegin, intersectionIts);
+  setPresent(presentAttributeIt, attributeBegin, intersectionIts);
 }
 
-void Trie::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeBegin) const
+void Trie::setSymmetricPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeBegin) const
 {
   vector<vector<vector<unsigned int>>::iterator> intersectionIts;
   intersectionIts.reserve(Attribute::lastAttributeId());
-  setAbsent(absentAttributeIt, absentValueOriginalIds, attributeBegin, intersectionIts);
+  setSymmetricPresent(presentAttributeIt, attributeBegin, intersectionIts);
 }
 
-const bool Trie::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<unordered_map<unsigned int, unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
+void Trie::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeBegin) const
+{
+  vector<vector<vector<unsigned int>>::iterator> intersectionIts;
+  intersectionIts.reserve(Attribute::lastAttributeId());
+  setAbsent(absentAttributeIt, absentValueDataIds, attributeBegin, intersectionIts);
+}
+
+void Trie::setSymmetricAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<Attribute*>::iterator attributeBegin) const
+{
+  vector<vector<vector<unsigned int>>::iterator> intersectionIts;
+  intersectionIts.reserve(Attribute::lastAttributeId());
+  setSymmetricAbsent(absentAttributeIt, attributeBegin, intersectionIts);
+}
+
+const bool Trie::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<vector<unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
 {
   const unsigned int element = oldIds2NewIdsIt->at(tuple[*attributeIdIt]);
   (*attributeIt)->substractPotentialNoise(element, membership);
@@ -179,21 +193,21 @@ const bool Trie::setTuple(const vector<unsigned int>& tuple, const unsigned int 
       ++intersectionIt;
     }
   intersectionIts.push_back((*attributeIt)->getIntersectionsBeginWithPotentialValues(element));
-  AbstractData* hyperplane = hyperplanes[element];
+  AbstractData*& hyperplane = hyperplanes[element];
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   if (hyperplane->setTuple(tuple, membership, ++attributeIdIt, ++oldIds2NewIdsIt, nextAttributeIt, intersectionIts))
     {
       AbstractData* newHyperplane;
       if (isCrisp)
 	{
-	  newHyperplane = new DenseCrispTube(static_cast<SparseCrispTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPotential());
+	  newHyperplane = new DenseCrispTube(static_cast<SparseCrispTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPresentAndPotential());
 	}
       else
 	{
-	  newHyperplane = new DenseFuzzyTube(static_cast<SparseFuzzyTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPotential());
+	  newHyperplane = new DenseFuzzyTube(static_cast<SparseFuzzyTube&>(*hyperplane), (*nextAttributeIt)->sizeOfPresentAndPotential());
 	}
       delete hyperplane;
-      hyperplanes[element] = newHyperplane;
+      hyperplane = newHyperplane;
     }
   return false;
 }
@@ -220,7 +234,7 @@ const unsigned int Trie::setSelfLoopsBeforeSymmetricAttributes(const unsigned in
 	}
       else
 	{
-	  noiseInSelfLoopsInHyperplane = (*hyperplaneIt)->setSelfLoopsBeforeSymmetricAttributes(firstSymmetricAttributeId, lastSymmetricAttributeId, nextAttributeIt, nextIntersectionIts, dimensionId + 1);
+	  noiseInSelfLoopsInHyperplane = static_cast<Trie*>(*hyperplaneIt)->setSelfLoopsBeforeSymmetricAttributes(firstSymmetricAttributeId, lastSymmetricAttributeId, nextAttributeIt, nextIntersectionIts, dimensionId + 1);
 	}
       ++hyperplaneIt;
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
@@ -239,7 +253,7 @@ const unsigned int Trie::setSelfLoopsInSymmetricAttribute(const unsigned int hyp
 {
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
-  AbstractData* hyperplane = hyperplanes[hyperplaneId];
+  AbstractData*& hyperplane = hyperplanes[hyperplaneId];
   nextIntersectionIts.push_back((*attributeIt)->getIntersectionsBeginWithPotentialValues(hyperplaneId));
   unsigned int noiseInSelfLoopsInHyperplane;
   if (dimensionId == lastSymmetricAttributeId)
@@ -247,10 +261,10 @@ const unsigned int Trie::setSelfLoopsInSymmetricAttribute(const unsigned int hyp
       noiseInSelfLoopsInHyperplane = hyperplane->setSelfLoopsAfterSymmetricAttributes(nextAttributeIt, nextIntersectionIts);
       if (noiseInSelfLoopsInHyperplane == 0)
 	{
-	  // **hyperplaneIt is a tube that would be full of 0-noise values: turn it into a NoNoiseTube
+	  // *hyperplane is a tube that would be full of 0-noise values: turn it into a NoNoiseTube
 	  delete hyperplane;
-	  hyperplanes[hyperplaneId] = &noNoiseTube;
-	  noiseInSelfLoopsInHyperplane = Attribute::noisePerUnit * (*nextAttributeIt)->sizeOfPotential();
+	  hyperplane = &noNoiseTube;
+	  noiseInSelfLoopsInHyperplane = Attribute::noisePerUnit * (*nextAttributeIt)->sizeOfPresentAndPotential();
 	}
     }
   else
@@ -282,7 +296,7 @@ const unsigned int Trie::setSelfLoopsAfterSymmetricAttributes(const vector<Attri
 	  // **hyperplaneIt is a tube that would be full of 0-noise values: turn it into a NoNoiseTube
 	  delete *hyperplaneIt;
 	  hyperplanes[hyperplaneId] = &noNoiseTube;
-	  noiseInSelfLoopsInHyperplane = Attribute::noisePerUnit * (*nextAttributeIt)->sizeOfPotential();
+	  noiseInSelfLoopsInHyperplane = Attribute::noisePerUnit * (*nextAttributeIt)->sizeOfPresentAndPotential();
 	}
       ++hyperplaneIt;
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
@@ -296,40 +310,77 @@ const unsigned int Trie::setSelfLoopsAfterSymmetricAttributes(const vector<Attri
   return noiseInSelfLoops;
 }
 
-const unsigned int Trie::setPresent(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int Trie::setPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
   if (attributeIt == presentAttributeIt)
     {
+      Value& presentValue = (*presentAttributeIt)->getChosenValue();
       nextIntersectionIts.push_back(presentValue.getIntersectionsBeginWithPresentValues());
-      const unsigned int newNoiseInHyperplane = hyperplanes[presentValue.getOriginalId()]->setPresentAfterPresentValueMet(nextAttributeIt, nextIntersectionIts);
-      nextIntersectionIts.pop_back();
-      return newNoiseInHyperplane;
+      return hyperplanes[presentValue.getDataId()]->setPresentAfterPresentValueMet(nextAttributeIt, nextIntersectionIts);
     }
-  presentFixPotentialValues(**attributeIt, presentAttributeIt, presentValue, nextAttributeIt, intersectionIts);
-  presentFixAbsentValues(**attributeIt, presentAttributeIt, presentValue, nextAttributeIt, intersectionIts);
-  return presentFixPresentValues(**attributeIt, presentAttributeIt, presentValue, nextAttributeIt, nextIntersectionIts);
+  presentFixPotentialOrAbsentValues(**attributeIt, presentAttributeIt, nextAttributeIt, intersectionIts);
+  return presentFixPresentValues(**attributeIt, presentAttributeIt, nextAttributeIt, nextIntersectionIts);
+}
+
+const unsigned int Trie::setSymmetricPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
+  vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
+  if (attributeIt == presentAttributeIt)
+    {
+      // *this necessarily relates to the first symmetric attribute
+      presentFixPotentialOrAbsentValuesInFirstSymmetricAttribute(**attributeIt, nextAttributeIt, intersectionIts);
+      const unsigned int newNoise = presentFixPresentValues(**attributeIt, nextAttributeIt, nextAttributeIt, nextIntersectionIts);
+      Value& presentValue = (*presentAttributeIt)->getChosenValue();
+      nextIntersectionIts.push_back(presentValue.getIntersectionsBeginWithPresentValues());
+      return newNoise + hyperplanes[presentValue.getDataId()]->setSymmetricPresentAfterPresentValueMet(nextAttributeIt, nextIntersectionIts);
+    }
+  presentFixPotentialOrAbsentValuesBeforeSymmetricAttributes(**attributeIt, presentAttributeIt, nextAttributeIt, intersectionIts);
+  return presentFixPresentValuesBeforeSymmetricAttributes(**attributeIt, presentAttributeIt, nextAttributeIt, nextIntersectionIts);
 }
 
 const unsigned int Trie::setPresentAfterPresentValueMet(const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
-  presentFixPotentialValuesAfterPresentValueMet(**attributeIt, nextAttributeIt, intersectionIts);
-  presentFixAbsentValuesAfterPresentValueMet(**attributeIt, nextAttributeIt, intersectionIts);
+  presentFixPotentialOrAbsentValuesAfterPresentValueMet(**attributeIt, nextAttributeIt, intersectionIts);
   return presentFixPresentValuesAfterPresentValueMet(**attributeIt, nextAttributeIt, nextIntersectionIts);
 }
 
-const unsigned int Trie::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
+const unsigned int Trie::setSymmetricPresentAfterPresentValueMet(const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  // *this necessarily relates to the second symmetric attribute
+  const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
+  vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
+  presentFixPotentialOrAbsentValuesInSecondSymmetricAttribute(**attributeIt, nextAttributeIt, intersectionIts);
+  return presentFixPresentValuesAfterPresentValueMet(**attributeIt, nextAttributeIt, nextIntersectionIts);
+}
+
+const unsigned int Trie::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   if (attributeIt == presentAttributeIt)
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[presentValue.getOriginalId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(attributeIt + 1, potentialOrAbsentValueIntersectionIt + 1);
-      (*potentialOrAbsentValueIntersectionIt)[presentValue.getId()] += newNoiseInHyperplane;
+      const Value& presentValue = (*presentAttributeIt)->getChosenValue();
+      const unsigned int newNoiseInHyperplane = hyperplanes[presentValue.getDataId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(attributeIt + 1, potentialOrAbsentValueIntersectionIt + 1);
+      (*potentialOrAbsentValueIntersectionIt)[presentValue.getIntersectionId()] += newNoiseInHyperplane;
       return newNoiseInHyperplane;
     }
-  return presentFixPresentValuesAfterPotentialOrAbsentUsed(**attributeIt, presentAttributeIt, presentValue, attributeIt + 1, potentialOrAbsentValueIntersectionIt, potentialOrAbsentValueIntersectionIt + 1);
+  return presentFixPresentValuesAfterPotentialOrAbsentUsed(**attributeIt, presentAttributeIt, attributeIt + 1, potentialOrAbsentValueIntersectionIt, potentialOrAbsentValueIntersectionIt + 1);
+}
+
+const unsigned int Trie::setSymmetricPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
+{
+  if (attributeIt == presentAttributeIt)
+    {
+      // *this necessarily relates to the first symmetric attribute
+      const Value& presentValue = (*presentAttributeIt)->getChosenValue();
+      const unsigned int newNoiseInHyperplane = hyperplanes[presentValue.getDataId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(attributeIt + 1, potentialOrAbsentValueIntersectionIt + 1);
+      (*potentialOrAbsentValueIntersectionIt)[presentValue.getIntersectionId()] += newNoiseInHyperplane;
+      return newNoiseInHyperplane + presentFixPresentValuesAfterPotentialOrAbsentUsed(**attributeIt, presentAttributeIt + 1, attributeIt + 1, potentialOrAbsentValueIntersectionIt, potentialOrAbsentValueIntersectionIt + 1);
+    }
+  return presentFixPresentValuesBeforeSymmetricAttributesAfterPotentialOrAbsentUsed(**attributeIt, presentAttributeIt, attributeIt + 1, potentialOrAbsentValueIntersectionIt, potentialOrAbsentValueIntersectionIt + 1);
 }
 
 const unsigned int Trie::setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
@@ -337,13 +388,30 @@ const unsigned int Trie::setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(
   return presentFixPresentValuesAfterPresentValueMetAndPotentialOrAbsentUsed(**attributeIt, attributeIt + 1, potentialOrAbsentValueIntersectionIt, potentialOrAbsentValueIntersectionIt + 1);
 }
 
-const unsigned int Trie::presentFixPresentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
+const unsigned int Trie::presentFixPresentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
       nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentValues());
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresent(presentAttributeIt, presentValue, nextAttributeIt, nextIntersectionIts);
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresent(presentAttributeIt, nextAttributeIt, nextIntersectionIts);
+      nextIntersectionIts.pop_back();
+      (*valueIt)->addPresentNoise(newNoiseInHyperplane);
+      newNoise += newNoiseInHyperplane;
+    }
+  return newNoise;
+}
+
+const unsigned int Trie::presentFixPresentValuesBeforeSymmetricAttributes(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
+{
+  unsigned int newNoise = 0;
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
+    {
+      nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentValues());
+      // Since this is before the symmetric attributes, hyperplanes necessarily are tries
+      const unsigned int newNoiseInHyperplane = static_cast<Trie*>(hyperplanes[(*valueIt)->getDataId()])->setSymmetricPresent(presentAttributeIt, nextAttributeIt, nextIntersectionIts);
       nextIntersectionIts.pop_back();
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
       newNoise += newNoiseInHyperplane;
@@ -354,10 +422,11 @@ const unsigned int Trie::presentFixPresentValues(Attribute& currentAttribute, co
 const unsigned int Trie::presentFixPresentValuesAfterPresentValueMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
       nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentValues());
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPresentValueMet(nextAttributeIt, nextIntersectionIts);
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPresentValueMet(nextAttributeIt, nextIntersectionIts);
       nextIntersectionIts.pop_back();
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
       newNoise += newNoiseInHyperplane;
@@ -365,13 +434,28 @@ const unsigned int Trie::presentFixPresentValuesAfterPresentValueMet(Attribute& 
   return newNoise;
 }
 
-const unsigned int Trie::presentFixPresentValuesAfterPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextPotentialOrAbsentValueIntersectionIt) const
+const unsigned int Trie::presentFixPresentValuesAfterPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextPotentialOrAbsentValueIntersectionIt) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPotentialOrAbsentUsed(presentAttributeIt, presentValue, nextAttributeIt, nextPotentialOrAbsentValueIntersectionIt);
-      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getId()] += newNoiseInHyperplane;
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPotentialOrAbsentUsed(presentAttributeIt, nextAttributeIt, nextPotentialOrAbsentValueIntersectionIt);
+      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getIntersectionId()] += newNoiseInHyperplane;
+      newNoise += newNoiseInHyperplane;
+    }
+  return newNoise;
+}
+
+const unsigned int Trie::presentFixPresentValuesBeforeSymmetricAttributesAfterPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextPotentialOrAbsentValueIntersectionIt) const
+{
+  unsigned int newNoise = 0;
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
+    {
+      // Since this is before the symmetric attributes, hyperplanes necessarily are tries
+      const unsigned int newNoiseInHyperplane = static_cast<Trie*>(hyperplanes[(*valueIt)->getDataId()])->setSymmetricPresentAfterPotentialOrAbsentUsed(presentAttributeIt, nextAttributeIt, nextPotentialOrAbsentValueIntersectionIt);
+      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getIntersectionId()] += newNoiseInHyperplane;
       newNoise += newNoiseInHyperplane;
     }
   return newNoise;
@@ -380,22 +464,24 @@ const unsigned int Trie::presentFixPresentValuesAfterPotentialOrAbsentUsed(Attri
 const unsigned int Trie::presentFixPresentValuesAfterPresentValueMetAndPotentialOrAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextPotentialOrAbsentValueIntersectionIt) const
 {
   unsigned int newNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(nextAttributeIt, nextPotentialOrAbsentValueIntersectionIt);
-      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getId()] += newNoiseInHyperplane;
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(nextAttributeIt, nextPotentialOrAbsentValueIntersectionIt);
+      (*potentialOrAbsentValueIntersectionIt)[(*valueIt)->getIntersectionId()] += newNoiseInHyperplane;
       newNoise += newNoiseInHyperplane;
     }
   return newNoise;
 }
 
-void Trie::presentFixPotentialValues(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void Trie::presentFixPotentialOrAbsentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPotentialOrAbsentUsed(presentAttributeIt, presentValue, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPotentialOrAbsentUsed(presentAttributeIt, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
@@ -403,13 +489,15 @@ void Trie::presentFixPotentialValues(Attribute& currentAttribute, const vector<A
     }
 }
 
-void Trie::presentFixAbsentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void Trie::presentFixPotentialOrAbsentValuesInFirstSymmetricAttribute(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  // The first potential value actually is the value set present and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); ++valueIt != end; )
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPotentialOrAbsentUsed(presentAttributeIt, presentValue, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPotentialOrAbsentUsed(nextAttributeIt, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
@@ -417,13 +505,15 @@ void Trie::presentFixAbsentValues(Attribute& currentAttribute, const vector<Attr
     }
 }
 
-void Trie::presentFixPotentialValuesAfterPresentValueMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void Trie::presentFixPotentialOrAbsentValuesBeforeSymmetricAttributes(Attribute& currentAttribute, const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
+      // Since this is before the symmetric attributes, hyperplanes necessarily are tries
+      const unsigned int newNoiseInHyperplane = static_cast<Trie*>(hyperplanes[(*valueIt)->getDataId()])->setSymmetricPresentAfterPotentialOrAbsentUsed(presentAttributeIt, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
@@ -431,13 +521,14 @@ void Trie::presentFixPotentialValuesAfterPresentValueMet(Attribute& currentAttri
     }
 }
 
-void Trie::presentFixAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void Trie::presentFixPotentialOrAbsentValuesAfterPresentValueMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
       (*valueIt)->addPresentNoise(newNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
@@ -445,21 +536,53 @@ void Trie::presentFixAbsentValuesAfterPresentValueMet(Attribute& currentAttribut
     }
 }
 
-const unsigned int Trie::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+void Trie::presentFixPotentialOrAbsentValuesInSecondSymmetricAttribute(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  // The first potential value actually is the value set present and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); ++valueIt != end; )
+    {
+      const unsigned int newNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setPresentAfterPresentValueMetAndPotentialOrAbsentUsed(nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentValues());
+      (*valueIt)->addPresentNoise(newNoiseInHyperplane);
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
+      for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	{
+	  (*intersectionIt)[valueId] += newNoiseInHyperplane;
+	}
+    }
+}
+
+const unsigned int Trie::setAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
   if (attributeIt == absentAttributeIt)
     {
       unsigned int oldNoise = 0;
-      for (const unsigned int absentValueOriginalId : absentValueOriginalIds)
+      for (const unsigned int absentValueDataId : absentValueDataIds)
 	{
-	  oldNoise += hyperplanes[absentValueOriginalId]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
+	  oldNoise += hyperplanes[absentValueDataId]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
 	}
       return oldNoise;
     }
-  absentFixAbsentValues(**attributeIt, absentAttributeIt, absentValueOriginalIds, nextAttributeIt, intersectionIts);
-  return absentFixPresentValues(**attributeIt, absentAttributeIt, absentValueOriginalIds, nextAttributeIt, intersectionIts, nextIntersectionIts) + absentFixPotentialValues(**attributeIt, absentAttributeIt, absentValueOriginalIds, nextAttributeIt, intersectionIts, nextIntersectionIts);
+  absentFixAbsentValues(**attributeIt, absentAttributeIt, absentValueDataIds, nextAttributeIt, intersectionIts);
+  return absentFixPresentOrPotentialValues(**attributeIt, absentAttributeIt, absentValueDataIds, nextAttributeIt, intersectionIts, nextIntersectionIts);
+}
+
+const unsigned int Trie::setSymmetricAbsent(const vector<Attribute*>::iterator absentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
+  vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
+  if (attributeIt == absentAttributeIt)
+    {
+      // *this necessarily relates to the first symmetric attribute
+      const unsigned int absentValueDataId = (*absentAttributeIt)->getChosenValue().getDataId();
+      const vector<unsigned int> absentValueDataIds {absentValueDataId};
+      absentFixAbsentValues(**attributeIt, nextAttributeIt, absentValueDataIds, nextAttributeIt, intersectionIts);
+      return hyperplanes[absentValueDataId]->setSymmetricAbsentAfterAbsentValueMet(nextAttributeIt, nextIntersectionIts) + absentFixPresentOrPotentialValuesInFirstSymmetricAttribute(**attributeIt, absentValueDataIds, nextAttributeIt, intersectionIts, nextIntersectionIts);
+    }
+  absentFixAbsentValuesBeforeSymmetricAttributes(**attributeIt, absentAttributeIt, nextAttributeIt, intersectionIts);
+  return absentFixPresentOrPotentialValuesBeforeSymmetricAttributes(**attributeIt, absentAttributeIt, nextAttributeIt, intersectionIts, nextIntersectionIts);
 }
 
 const unsigned int Trie::setAbsentAfterAbsentValuesMet(const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
@@ -467,42 +590,70 @@ const unsigned int Trie::setAbsentAfterAbsentValuesMet(const vector<Attribute*>:
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
   absentFixAbsentValuesAfterAbsentValuesMet(**attributeIt, nextAttributeIt, intersectionIts);
-  return absentFixPresentValuesAfterAbsentValuesMet(**attributeIt, nextAttributeIt, intersectionIts, nextIntersectionIts) + absentFixPotentialValuesAfterAbsentValuesMet(**attributeIt, nextAttributeIt, intersectionIts, nextIntersectionIts);
+  return absentFixPresentOrPotentialValuesAfterAbsentValuesMet(**attributeIt, nextAttributeIt, intersectionIts, nextIntersectionIts);
 }
 
-const unsigned int Trie::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+const unsigned int Trie::setSymmetricAbsentAfterAbsentValueMet(const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  // *this necessarily relates to the second symmetric attribute
+  const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
+  vector<vector<vector<unsigned int>>::iterator> nextIntersectionIts(incrementIterators(intersectionIts));
+  absentFixAbsentValuesAfterAbsentValuesMet(**attributeIt, nextAttributeIt, intersectionIts);
+  return absentFixPresentOrPotentialValuesInSecondSymmetricAttribute(**attributeIt, nextAttributeIt, intersectionIts, nextIntersectionIts);
+}
+
+const unsigned int Trie::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
   const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt = absentValueIntersectionIt + 1;
   if (attributeIt == absentAttributeIt)
     {
       unsigned int oldNoise = 0;
-      for (const unsigned int absentValueOriginalId : absentValueOriginalIds)
+      for (const unsigned int absentValueDataId : absentValueDataIds)
 	{
-	  oldNoise += hyperplanes[absentValueOriginalId]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
+	  oldNoise += hyperplanes[absentValueDataId]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
 	}
       return oldNoise;
     }
-  return absentFixPresentValuesAfterAbsentUsed(**attributeIt, absentAttributeIt, absentValueOriginalIds, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt) + absentFixPotentialValuesAfterAbsentUsed(**attributeIt, absentAttributeIt, absentValueOriginalIds, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt);
+  return absentFixPresentOrPotentialValuesAfterAbsentUsed(**attributeIt, absentAttributeIt, absentValueDataIds, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt);
+}
+
+const unsigned int Trie::setSymmetricAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+{
+  const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
+  const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt = absentValueIntersectionIt + 1;
+  if (attributeIt == absentAttributeIt)
+    {
+      // *this necessarily relates to the first symmetric attribute
+      const unsigned int absentValueDataId = (*absentAttributeIt)->getChosenValue().getDataId();
+      const vector<unsigned int> absentValueDataIds {absentValueDataId};
+      return hyperplanes[absentValueDataId]->setSymmetricAbsentAfterAbsentValueMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt) + absentFixPresentOrPotentialValuesInFirstSymmetricAttributeAfterAbsentUsed(**attributeIt, absentValueDataIds, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt);
+    }
+  return absentFixPresentOrPotentialValuesBeforeSymmetricAttributesAfterAbsentUsed(**attributeIt, absentAttributeIt, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt);
 }
 
 const unsigned int Trie::setAbsentAfterAbsentValuesMetAndAbsentUsed(const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
-  const vector<Attribute*>::iterator nextAttributeIt = attributeIt + 1;
-  const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt = absentValueIntersectionIt + 1;
-  return absentFixPresentValuesAfterAbsentValuesMetAndAbsentUsed(**attributeIt, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt) + absentFixPotentialValuesAfterAbsentValuesMetAndAbsentUsed(**attributeIt, nextAttributeIt, absentValueIntersectionIt, nextAbsentValueIntersectionIt);
+  return absentFixPresentOrPotentialValuesAfterAbsentValuesMetAndAbsentUsed(**attributeIt, attributeIt + 1, absentValueIntersectionIt, absentValueIntersectionIt + 1);
 }
 
-const unsigned int Trie::absentFixPresentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
+const unsigned int Trie::setSymmetricAbsentAfterAbsentValueMetAndAbsentUsed(const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
+{
+  // *this necessarily relates to the second symmetric attribute
+  return absentFixPresentOrPotentialValuesInSecondSymmetricAttributeAfterAbsentUsed(**attributeIt, attributeIt + 1, absentValueIntersectionIt, absentValueIntersectionIt + 1);
+}
+
+const unsigned int Trie::absentFixPresentOrPotentialValues(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
       nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsent(absentAttributeIt, absentValueOriginalIds, nextAttributeIt, nextIntersectionIts);
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsent(absentAttributeIt, absentValueDataIds, nextAttributeIt, nextIntersectionIts);
       nextIntersectionIts.pop_back();
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -512,16 +663,33 @@ const unsigned int Trie::absentFixPresentValues(Attribute& currentAttribute, con
   return oldNoise;
 }
 
-const unsigned int Trie::absentFixPotentialValues(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
+const unsigned int Trie::absentFixPresentOrPotentialValuesInFirstSymmetricAttribute(Attribute& currentAttribute, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
       nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsent(absentAttributeIt, absentValueOriginalIds, nextAttributeIt, nextIntersectionIts);
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsent(nextAttributeIt, absentValueDataIds, nextAttributeIt, nextIntersectionIts);
       nextIntersectionIts.pop_back();
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
+      for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	{
+	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
+	}
+      oldNoise += oldNoiseInHyperplane;
+    }
+  end = currentAttribute.absentEnd();
+  // The first potential value actually is the value set absent and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  while (++valueIt != end)
+    {
+      nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsent(nextAttributeIt, absentValueDataIds, nextAttributeIt, nextIntersectionIts);
+      nextIntersectionIts.pop_back();
+      (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -531,16 +699,18 @@ const unsigned int Trie::absentFixPotentialValues(Attribute& currentAttribute, c
   return oldNoise;
 }
 
-const unsigned int Trie::absentFixPresentValuesAfterAbsentValuesMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
+const unsigned int Trie::absentFixPresentOrPotentialValuesBeforeSymmetricAttributes(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
       nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
+      // Since this is before the symmetric attributes, hyperplanes necessarily are tries
+      const unsigned int oldNoiseInHyperplane = static_cast<Trie*>(hyperplanes[(*valueIt)->getDataId()])->setSymmetricAbsent(absentAttributeIt, nextAttributeIt, nextIntersectionIts);
       nextIntersectionIts.pop_back();
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -550,16 +720,17 @@ const unsigned int Trie::absentFixPresentValuesAfterAbsentValuesMet(Attribute& c
   return oldNoise;
 }
 
-const unsigned int Trie::absentFixPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
+const unsigned int Trie::absentFixPresentOrPotentialValuesAfterAbsentValuesMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
     {
       nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
       nextIntersectionIts.pop_back();
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -569,61 +740,150 @@ const unsigned int Trie::absentFixPotentialValuesAfterAbsentValuesMet(Attribute&
   return oldNoise;
 }
 
-const unsigned int Trie::absentFixPresentValuesAfterAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
+const unsigned int Trie::absentFixPresentOrPotentialValuesInSecondSymmetricAttribute(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts, vector<vector<vector<unsigned int>>::iterator>& nextIntersectionIts) const
 {
   unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentUsed(absentAttributeIt, absentValueOriginalIds, nextAttributeIt, nextAbsentValueIntersectionIt);
-      (*absentValueIntersectionIt)[(*valueIt)->getId()] -= oldNoiseInHyperplane;
-      oldNoise += oldNoiseInHyperplane;
-    }
-  return oldNoise;
-}
-
-const unsigned int Trie::absentFixPotentialValuesAfterAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
-{
-  unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
-    {
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentUsed(absentAttributeIt, absentValueOriginalIds, nextAttributeIt, nextAbsentValueIntersectionIt);
-      (*absentValueIntersectionIt)[(*valueIt)->getId()] -= oldNoiseInHyperplane;
-      oldNoise += oldNoiseInHyperplane;
-    }
-  return oldNoise;
-}
-
-const unsigned int Trie::absentFixPresentValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
-{
-  unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != currentAttribute.presentEnd(); ++valueIt)
-    {
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
-      (*absentValueIntersectionIt)[(*valueIt)->getId()] -= oldNoiseInHyperplane;
-      oldNoise += oldNoiseInHyperplane;
-    }
-  return oldNoise;
-}
-
-const unsigned int Trie::absentFixPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
-{
-  unsigned int oldNoise = 0;
-  for (vector<Value*>::iterator valueIt = currentAttribute.potentialBegin(); valueIt != currentAttribute.potentialEnd(); ++valueIt)
-    {
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
-      (*absentValueIntersectionIt)[(*valueIt)->getId()] -= oldNoiseInHyperplane;
-      oldNoise += oldNoiseInHyperplane;
-    }
-  return oldNoise;
-}
-
-void Trie::absentFixAbsentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueOriginalIds, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
-{
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
-    {
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentUsed(absentAttributeIt, absentValueOriginalIds, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
+      nextIntersectionIts.pop_back();
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
+      for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	{
+	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
+	}
+      oldNoise += oldNoiseInHyperplane;
+    }
+  end = currentAttribute.irrelevantEnd();
+  // The first potential value actually is the value set absent and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  while (++valueIt != end)
+    {
+      nextIntersectionIts.push_back((*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMet(nextAttributeIt, nextIntersectionIts);
+      nextIntersectionIts.pop_back();
+      (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
+      for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	{
+	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
+	}
+      oldNoise += oldNoiseInHyperplane;
+    }
+  return oldNoise;
+}
+
+const unsigned int Trie::absentFixPresentOrPotentialValuesAfterAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
+{
+  unsigned int oldNoise = 0;
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentUsed(absentAttributeIt, absentValueDataIds, nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  return oldNoise;
+}
+
+const unsigned int Trie::absentFixPresentOrPotentialValuesInFirstSymmetricAttributeAfterAbsentUsed(Attribute& currentAttribute, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
+{
+  unsigned int oldNoise = 0;
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentUsed(nextAttributeIt, absentValueDataIds, nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  end = currentAttribute.irrelevantEnd();
+  // The first potential value actually is the value set absent and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  while (++valueIt != end)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentUsed(nextAttributeIt, absentValueDataIds, nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }  
+  return oldNoise;
+}
+
+const unsigned int Trie::absentFixPresentOrPotentialValuesBeforeSymmetricAttributesAfterAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
+{
+  unsigned int oldNoise = 0;
+  const vector<Value*>::iterator end = currentAttribute.presentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
+    {
+      // Since this is before the symmetric attributes, hyperplanes necessarily are tries
+      const unsigned int oldNoiseInHyperplane = static_cast<Trie*>(hyperplanes[(*valueIt)->getDataId()])->setSymmetricAbsentAfterAbsentUsed(absentAttributeIt, nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  return oldNoise;
+}
+
+const unsigned int Trie::absentFixPresentOrPotentialValuesAfterAbsentValuesMetAndAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
+{
+  unsigned int oldNoise = 0;
+  const vector<Value*>::iterator end = currentAttribute.irrelevantEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.presentBegin(); valueIt != end; ++valueIt)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  return oldNoise;
+}
+
+const unsigned int Trie::absentFixPresentOrPotentialValuesInSecondSymmetricAttributeAfterAbsentUsed(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt, const vector<vector<unsigned int>>::iterator nextAbsentValueIntersectionIt) const
+{
+  unsigned int oldNoise = 0;
+  vector<Value*>::iterator end = currentAttribute.presentEnd();
+  vector<Value*>::iterator valueIt = currentAttribute.presentBegin();
+  for (; valueIt != end; ++valueIt)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  end = currentAttribute.irrelevantEnd();
+  // The first potential value actually is the value set absent and there is no noise to be found at the intersection of a vertex (seen as an outgoing vertex) and itself (seen as an ingoing vertex)
+  while (++valueIt != end)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, nextAbsentValueIntersectionIt);
+      (*absentValueIntersectionIt)[(*valueIt)->getIntersectionId()] -= oldNoiseInHyperplane;
+      oldNoise += oldNoiseInHyperplane;
+    }
+  return oldNoise;
+}
+
+void Trie::absentFixAbsentValues(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueDataIds, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != end; ++valueIt)
+    {
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentUsed(absentAttributeIt, absentValueDataIds, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
+      for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
+	{
+	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
+	}
+    }
+}
+
+void Trie::absentFixAbsentValuesBeforeSymmetricAttributes(Attribute& currentAttribute, const vector<Attribute*>::iterator absentAttributeIt, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != end; ++valueIt)
+    {
+      // Since this is before the symmetric attributes, hyperplanes necessarily are tries
+      const unsigned int oldNoiseInHyperplane = static_cast<Trie*>(hyperplanes[(*valueIt)->getDataId()])->setSymmetricAbsentAfterAbsentUsed(absentAttributeIt, nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -633,11 +893,12 @@ void Trie::absentFixAbsentValues(Attribute& currentAttribute, const vector<Attri
 
 void Trie::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& currentAttribute, const vector<Attribute*>::iterator nextAttributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
-  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != currentAttribute.absentEnd(); ++valueIt)
+  const vector<Value*>::iterator end = currentAttribute.absentEnd();
+  for (vector<Value*>::iterator valueIt = currentAttribute.absentBegin(); valueIt != end; ++valueIt)
     {
-      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getOriginalId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
+      const unsigned int oldNoiseInHyperplane = hyperplanes[(*valueIt)->getDataId()]->setAbsentAfterAbsentValuesMetAndAbsentUsed(nextAttributeIt, (*valueIt)->getIntersectionsBeginWithPresentAndPotentialValues());
       (*valueIt)->substractPotentialNoise(oldNoiseInHyperplane);
-      const unsigned int valueId = (*valueIt)->getId();
+      const unsigned int valueId = (*valueIt)->getIntersectionId();
       for (vector<vector<unsigned int>>::iterator intersectionIt : intersectionIts)
 	{
 	  (*intersectionIt)[valueId] -= oldNoiseInHyperplane;
@@ -645,87 +906,67 @@ void Trie::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& currentAttribute
     }
 }
 
-void Trie::countNoise(vector<vector<Element>>& nSet) const
+const double Trie::countNoise(const vector<vector<unsigned int>>& nSet) const
 {
-  const vector<vector<Element>>::iterator nextDimensionIt = nSet.begin() + 1;
-  for (Element& element : nSet.front())
+  double noise = 0;
+  const vector<vector<unsigned int>>::const_iterator nextDimensionIt = nSet.begin() + 1;
+  for (const unsigned int id : nSet.front())
     {
-      element.addNoise(hyperplanes[element.getId()]->countNoise(nextDimensionIt));
-    }
-}
-
-const unsigned int Trie::countNoise(const vector<vector<Element>>::iterator dimensionIt) const
-{
-  unsigned int noise = 0;
-  const vector<vector<Element>>::iterator nextDimensionIt = dimensionIt + 1;
-  for (Element& element : *dimensionIt)
-    {
-      const unsigned int noiseInHyperplane = hyperplanes[element.getId()]->countNoise(nextDimensionIt);
-      noise += noiseInHyperplane;
-      element.addNoise(noiseInHyperplane);
+      noise += static_cast<double>(hyperplanes[id]->countNoise(nextDimensionIt));
     }
   return noise;
 }
 
-const bool Trie::lessNoisyNSet(const vector<unsigned int>& noiseThresholds, vector<vector<Element>>& nSet, vector<vector<Element>::iterator>& tuple) const
+const unsigned int Trie::countNoise(const vector<vector<unsigned int>>::const_iterator dimensionIt) const
 {
-  const vector<unsigned int>::const_iterator noiseThresholdIt = noiseThresholds.begin();
-  const vector<vector<Element>>::iterator dimensionIt = nSet.begin();
-  const vector<vector<Element>::iterator>::iterator tupleIt = tuple.begin();
-  const vector<unsigned int>::const_iterator nextNoiseThresholdIt = noiseThresholdIt + 1;
-  const vector<vector<Element>>::iterator nextDimensionIt = dimensionIt + 1;
-  const vector<vector<Element>::iterator>::iterator nextTupleIt = tupleIt + 1;
+  unsigned int noise = 0;
+  const vector<vector<unsigned int>>::const_iterator nextDimensionIt = dimensionIt + 1;
+  for (const unsigned int id : *dimensionIt)
+    {
+      noise += hyperplanes[id]->countNoise(nextDimensionIt);
+    }
+  return noise;
+}
+
+const bool Trie::isBetterNSet(const double membershipThreshold, const vector<vector<unsigned int>>& nSet, vector<vector<unsigned int>::const_iterator>& tuple, double& membershipSum) const
+{
+  const vector<vector<unsigned int>>::const_iterator dimensionIt = nSet.begin();
+  const vector<vector<unsigned int>::const_iterator>::iterator tupleIt = tuple.begin();
+  const vector<vector<unsigned int>>::const_iterator nextDimensionIt = dimensionIt + 1;
+  const vector<vector<unsigned int>::const_iterator>::iterator nextTupleIt = tupleIt + 1;
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      const pair<unsigned int, const bool> noiseInHyperplaneAndIsPause = hyperplanes[(*tupleIt)->getId()]->countNoiseUpToThresholds(nextNoiseThresholdIt, nextDimensionIt, nextTupleIt);
-      (*tupleIt)->addNoise(noiseInHyperplaneAndIsPause.first);
-      if (noiseInHyperplaneAndIsPause.second)
+      if (hyperplanes[**tupleIt]->decreaseMembershipDownToThreshold(membershipThreshold, nextDimensionIt, nextTupleIt, membershipSum))
 	{
 	  if (*nextTupleIt == nextDimensionIt->end())
 	    {
 	      *nextTupleIt = nextDimensionIt->begin();
 	      ++*tupleIt;
 	    }
-	  return false;
-	}
-      if ((*tupleIt)->getNoise() > *noiseThresholdIt)
-	{
-	  ++*tupleIt;
 	  return false;
 	}
     }
   return true;
 }
 
-pair<unsigned int, const bool> Trie::countNoiseUpToThresholds(const vector<unsigned int>::const_iterator noiseThresholdIt, const vector<vector<Element>>::iterator dimensionIt, const vector<vector<Element>::iterator>::iterator tupleIt) const
+const bool Trie::decreaseMembershipUpToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
 {
-  unsigned int noise = 0;
-  const vector<unsigned int>::const_iterator nextNoiseThresholdIt = noiseThresholdIt + 1;
-  const vector<vector<Element>>::iterator nextDimensionIt = dimensionIt + 1;
-  const vector<vector<Element>::iterator>::iterator nextTupleIt = tupleIt + 1;
+  const vector<vector<unsigned int>>::const_iterator nextDimensionIt = dimensionIt + 1;
+  const vector<vector<unsigned int>::const_iterator>::iterator nextTupleIt = tupleIt + 1;
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      pair<unsigned int, const bool> noiseInHyperplaneAndIsPause = hyperplanes[(*tupleIt)->getId()]->countNoiseUpToThresholds(nextNoiseThresholdIt, nextDimensionIt, nextTupleIt);
-      (*tupleIt)->addNoise(noiseInHyperplaneAndIsPause.first);
-      if (noiseInHyperplaneAndIsPause.second)
+      if (hyperplanes[**tupleIt]->decreaseMembershipDownToThreshold(membershipThreshold, nextDimensionIt, nextTupleIt, membershipSum))
 	{
 	  if (*nextTupleIt == nextDimensionIt->end())
 	    {
 	      *nextTupleIt = nextDimensionIt->begin();
 	      ++*tupleIt;
 	    }
-	  noiseInHyperplaneAndIsPause.first += noise;
-	  return noiseInHyperplaneAndIsPause;
+	  return true;
 	}
-      if ((*tupleIt)->getNoise() > *noiseThresholdIt)
-	{
-	  ++*tupleIt;
-	  return pair<unsigned int, const bool>(noiseInHyperplaneAndIsPause.first + noise, true);
-	}
-      noise += noiseInHyperplaneAndIsPause.first;
     }
   *tupleIt = dimensionIt->begin();
-  return pair<unsigned int, const bool>(noise, false);
+  return false;
 }
 
 #ifdef ASSERT
@@ -734,12 +975,13 @@ const unsigned int Trie::countNoiseOnPresent(const vector<Attribute*>::const_ite
   const vector<Attribute*>::const_iterator nextAttributeIt = attributeIt + 1;
   if (attributeIt == valueAttributeIt)
     {
-      return hyperplanes[value.getOriginalId()]->countNoiseOnPresent(valueAttributeIt, value, nextAttributeIt);
+      return hyperplanes[value.getDataId()]->countNoiseOnPresent(valueAttributeIt, value, nextAttributeIt);
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  const vector<Value*>::const_iterator end = (*attributeIt)->presentEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      noise += hyperplanes[(*valueIt)->getOriginalId()]->countNoiseOnPresent(valueAttributeIt, value, nextAttributeIt);
+      noise += hyperplanes[(*valueIt)->getDataId()]->countNoiseOnPresent(valueAttributeIt, value, nextAttributeIt);
     }
   return noise;
 }
@@ -749,16 +991,13 @@ const unsigned int Trie::countNoiseOnPresentAndPotential(const vector<Attribute*
   const vector<Attribute*>::const_iterator nextAttributeIt = attributeIt + 1;
   if (attributeIt == valueAttributeIt)
     {
-      return hyperplanes[value.getOriginalId()]->countNoiseOnPresentAndPotential(valueAttributeIt, value, nextAttributeIt);
+      return hyperplanes[value.getDataId()]->countNoiseOnPresentAndPotential(valueAttributeIt, value, nextAttributeIt);
     }
   unsigned int noise = 0;
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != (*attributeIt)->presentEnd(); ++valueIt)
+  const vector<Value*>::const_iterator end = (*attributeIt)->irrelevantEnd();
+  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->presentBegin(); valueIt != end; ++valueIt)
     {
-      noise += hyperplanes[(*valueIt)->getOriginalId()]->countNoiseOnPresentAndPotential(valueAttributeIt, value, nextAttributeIt);
-    }
-  for (vector<Value*>::const_iterator valueIt = (*attributeIt)->potentialBegin(); valueIt != (*attributeIt)->potentialEnd(); ++valueIt)
-    {
-      noise += hyperplanes[(*valueIt)->getOriginalId()]->countNoiseOnPresentAndPotential(valueAttributeIt, value, nextAttributeIt);
+      noise += hyperplanes[(*valueIt)->getDataId()]->countNoiseOnPresentAndPotential(valueAttributeIt, value, nextAttributeIt);
     }
   return noise;
 }

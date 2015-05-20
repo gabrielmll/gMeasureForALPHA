@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -10,67 +10,55 @@
 
 #include "SkyPatternTree.h"
 
+unsigned int SkyPatternTree::nonMinSizeMeasuresIndex;
 vector<IndistinctSkyPatterns*> SkyPatternTree::skyPatterns;
 unordered_set<IndistinctSkyPatterns*, skyPatternHasher, skyPatternEqual> SkyPatternTree::minSizeSkyline;
 
+bool SkyPatternTree::isSomeOptimizedMeasureNotMonotone;
 bool SkyPatternTree::isIntermediateSkylinePrinted;
 
-SkyPatternTree::SkyPatternTree(const char* dataFileName, const float densityThreshold, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam, const bool isIntermediateSkylinePrintedParam) : Tree(dataFileName, densityThreshold, epsilonVectorParam, cliqueDimensionsParam, tauVectorParam, minSizesParam, minAreaParam, isReductionOnly, maximalNbOfClosedNSetsForAgglomeration, inputElementSeparator, inputDimensionSeparator, outputFileName, outputDimensionSeparatorParam, patternSizeSeparatorParam, sizeSeparatorParam, sizeAreaSeparatorParam, isSizePrintedParam, isAreaPrintedParam), measuresToMinimize(), measuresToMaximize(), minSizeMeasuresToMaximize()
+SkyPatternTree::SkyPatternTree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam, const bool isIntermediateSkylinePrintedParam) : Tree(dataFileName, densityThreshold, shiftMultiplier, epsilonVectorParam, cliqueDimensionsParam, tauVectorParam, minSizesParam, minAreaParam, isReductionOnly, maximalNbOfClosedNSetsForAgglomeration, unclosedDimensions, inputElementSeparator, inputDimensionSeparator, outputFileName, outputDimensionSeparatorParam, patternSizeSeparatorParam, sizeSeparatorParam, sizeAreaSeparatorParam, isSizePrintedParam, isAreaPrintedParam), measuresToMaximize()
 {
   isIntermediateSkylinePrinted = isIntermediateSkylinePrintedParam;
 }
 
 // Constructor of a left subtree
-SkyPatternTree::SkyPatternTree(const SkyPatternTree& parent, const vector<Measure*>& mereConstraintsParam, const vector<Measure*>& measuresToMinimizeParam, const vector<Measure*>& measuresToMaximizeParam, const vector<Measure*>& minSizeMeasuresToMaximizeParam): Tree(parent, mereConstraintsParam), measuresToMinimize(measuresToMinimizeParam), measuresToMaximize(measuresToMaximizeParam), minSizeMeasuresToMaximize(minSizeMeasuresToMaximizeParam)
+SkyPatternTree::SkyPatternTree(const SkyPatternTree& parent, const vector<Measure*>& mereConstraintsParam, const vector<Measure*>& measuresToMaximizeParam): Tree(parent, mereConstraintsParam), measuresToMaximize(std::move(measuresToMaximizeParam))
 {
 }
 
 SkyPatternTree::~SkyPatternTree()
 {
-  deleteMeasures(measuresToMinimize);
   deleteMeasures(measuresToMaximize);
-  deleteMeasures(minSizeMeasuresToMaximize);
 }
 
-void SkyPatternTree::leftSubtree(const unsigned int presentAttributeId, const unsigned int originalValueId) const
+const bool SkyPatternTree::leftSubtree(const Attribute& presentAttribute) const
 {
-  vector<Measure*> childMereConstraints = childMeasures(mereConstraints, presentAttributeId, originalValueId);
-  if (childMereConstraints.size() == mereConstraints.size())
+  const unsigned int presentAttributeId = presentAttribute.getId();
+  const unsigned int valueId = presentAttribute.getChosenValue().getDataId();
+  vector<Measure*> childMereConstraints = childMeasures(mereConstraints, presentAttributeId, valueId);
+  if (childMereConstraints.size() != mereConstraints.size())
     {
-      vector<Measure*> childMeasuresToMinimize = childMeasures(measuresToMinimize, presentAttributeId, originalValueId);
-      if (childMeasuresToMinimize.size() != measuresToMinimize.size())
-	{
-	  deleteMeasures(childMereConstraints);
-	  return;
-	}
-      vector<Measure*> childMeasuresToMaximize = childMeasures(measuresToMaximize, presentAttributeId, originalValueId);
-      if (childMeasuresToMaximize.size() != measuresToMaximize.size())
-	{
-	  deleteMeasures(childMereConstraints);
-	  deleteMeasures(childMeasuresToMinimize);
-	  return;
-	}
-      vector<Measure*> childMinSizeMeasuresToMaximize = childMeasures(minSizeMeasuresToMaximize, presentAttributeId, originalValueId);
-      if (childMinSizeMeasuresToMaximize.size() != minSizeMeasuresToMaximize.size())
-	{
-	  deleteMeasures(childMereConstraints);
-	  deleteMeasures(childMeasuresToMinimize);
-	  deleteMeasures(childMeasuresToMaximize);
-	  return;
-	}
-      if (dominated(childMeasuresToMinimize, childMeasuresToMaximize, childMinSizeMeasuresToMaximize))
-	{
-	  deleteMeasures(childMereConstraints);
-	  deleteMeasures(childMeasuresToMinimize);
-	  deleteMeasures(childMeasuresToMaximize);
-	  deleteMeasures(childMinSizeMeasuresToMaximize);
-	  return;
-	}
-      SkyPatternTree(*this, childMereConstraints, childMeasuresToMinimize, childMeasuresToMaximize, childMinSizeMeasuresToMaximize).setPresent(presentAttributeId, originalValueId);
+      return true;
     }
+  vector<Measure*> childMeasuresToMaximize = childMeasures(measuresToMaximize, presentAttributeId, valueId);
+  if (childMeasuresToMaximize.size() != measuresToMaximize.size())
+    {
+      deleteMeasures(childMereConstraints);
+      return true;
+    }
+  if (dominated(childMeasuresToMaximize))
+    {
+      deleteMeasures(childMereConstraints);
+      deleteMeasures(childMeasuresToMaximize);
+      return true;
+    }
+  SkyPatternTree leftChild(*this, childMereConstraints, childMeasuresToMaximize);
+  leftChild.setPresent(presentAttributeId);
+  return leftChild.isEnumeratedElementPotentiallyPreventingClosedness;
 }
 
-void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, const int maxArea, const vector<unsigned int>& maximizedSizeDimensionsParam, const vector<unsigned int>& minimizedSizeDimensionsParam, const bool isAreaMaximized, const bool isAreaMinimized, const vector<string>& groupFileNames, vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, vector<unsigned int>& groupMaximizedSizes, const vector<unsigned int>& groupMinimizedSizesParam, const vector<vector<float>>& groupMaximizedRatios, const vector<vector<float>>& groupMaximizedPiatetskyShapiros, const vector<vector<float>>& groupMaximizedLeverages, const vector<vector<float>>& groupMaximizedForces, const vector<vector<float>>& groupMaximizedYulesQs, const vector<vector<float>>& groupMaximizedYulesYs)
+void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, const int maxArea, const vector<unsigned int>& maximizedSizeDimensionsParam, const vector<unsigned int>& minimizedSizeDimensionsParam, const bool isAreaMaximized, const bool isAreaMinimized, const vector<string>& groupFileNames, const vector<unsigned int>& groupMinSizesParam, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, vector<unsigned int>& groupMaximizedSizes, const vector<unsigned int>& groupMinimizedSizes, const vector<vector<float>>& groupMaximizedRatios, const vector<vector<float>>& groupMaximizedPiatetskyShapiros, const vector<vector<float>>& groupMaximizedLeverages, const vector<vector<float>>& groupMaximizedForces, const vector<vector<float>>& groupMaximizedYulesQs, const vector<vector<float>>& groupMaximizedYulesYs, const char* utilityValueFileName, const float minUtility, const char* valueElementSeparator, const char* valueDimensionSeparator, const bool isUtilityMaximized, const char* slopePointFileName, const float minSlope, const char* pointElementSeparator, const char* pointDimensionSeparator, const bool isSlopeMaximized, const float densityThreshold)
 {
   // Helper variables
   const unsigned int n = attributes.size();
@@ -78,8 +66,9 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
   cardinalities.reserve(n);
   for (const Attribute* attribute : attributes)
     {
-      cardinalities.push_back(attribute->sizeOfPotential());
+      cardinalities.push_back(attribute->sizeOfPresentAndPotential());
     }
+  vector<Measure*> nonMinSizeMeasuresToMaximize;
   try
     {
       // Get the maximal sizes in the internal order of the attributes
@@ -98,55 +87,58 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  setMinParametersInClique(maxSizes);
 	}
-      // Initializing minSize and maxSize measures
-      vector<unsigned int> maximizedSizeDimensions;
-      maximizedSizeDimensions.reserve(maximizedSizeDimensionsParam.size());
-      for (const unsigned int maximizedSizeDimension : maximizedSizeDimensionsParam)
+      // Initializing measures in increasing cost to update them
+      // Initializing minimizedSizeDimensions and maximizedSizeDimensions
+      if (!maximizedSizeDimensionsParam.empty() && maximizedSizeDimensionsParam.back() >= n)
 	{
-	  if (maximizedSizeDimension >= n)
-	    {
-	      throw UsageException(("sky-s option should provide attribute ids between 0 and " + lexical_cast<string>(n - 1)).c_str());
-	    }
-	  maximizedSizeDimensions.push_back(external2InternalAttributeOrder[maximizedSizeDimension]);
+	  throw UsageException(("sky-s option should provide attribute ids between 0 and " + lexical_cast<string>(n - 1)).c_str());
+	}
+      if (!minimizedSizeDimensionsParam.empty() && minimizedSizeDimensionsParam.back() >= n)
+	{
+	  throw UsageException(("sky-S option should provide attribute ids between 0 and " + lexical_cast<string>(n - 1)).c_str());
 	}
       vector<unsigned int> minimizedSizeDimensions;
       minimizedSizeDimensions.reserve(minimizedSizeDimensionsParam.size());
       for (const unsigned int minimizedSizeDimension : minimizedSizeDimensionsParam)
 	{
-	  if (minimizedSizeDimension >= n)
-	    {
-	      throw UsageException(("sky-S option should provide attribute ids between 0 and " + lexical_cast<string>(n - 1)).c_str());
-	    }
-	  const unsigned int attributeId = external2InternalAttributeOrder[minimizedSizeDimension];
-	  minimizedSizeDimensions.push_back(attributeId);
-	  measuresToMinimize.push_back(new MaxSize(attributeId, maxSizes[attributeId]));
+	  minimizedSizeDimensions.push_back(external2InternalAttributeOrder[minimizedSizeDimension]);
+	}
+      vector<unsigned int> maximizedSizeDimensions;
+      maximizedSizeDimensions.reserve(maximizedSizeDimensionsParam.size());
+      for (const unsigned int maximizedSizeDimension : maximizedSizeDimensionsParam)
+	{
+	  maximizedSizeDimensions.push_back(external2InternalAttributeOrder[maximizedSizeDimension]);
 	}
       sort(maximizedSizeDimensions.begin(), maximizedSizeDimensions.end());
-#ifdef MIN_SIZE_ELEMENT_PRUNING
-      // Initializing parameters to compute presentAndPotentialIrrelevancyThresholds given the sky-patterns
       IndistinctSkyPatterns::setParametersToComputePresentAndPotentialIrrelevancyThresholds(maximizedSizeDimensions, isAreaMaximized);
-#endif
-      // Initializing MinSize and MaxSize measures
+      // Initializing MinSize measures
+      unsigned int minAreaAccordingToSizes = 1;
       vector<unsigned int>::const_iterator maximizedSizeDimensionIt = maximizedSizeDimensions.begin();
-      sort(minimizedSizeDimensions.begin(), minimizedSizeDimensions.end());
-      vector<unsigned int>::const_iterator minimizedSizeDimensionIt = minimizedSizeDimensions.begin();
       for (unsigned int attributeId = 0; attributeId != n; ++attributeId)
 	{
 	  if (maximizedSizeDimensionIt != maximizedSizeDimensions.end() && *maximizedSizeDimensionIt == attributeId)
 	    {
-	      minSizeMeasuresToMaximize.push_back(new MinSize(attributeId, cardinalities[attributeId], minSizes[attributeId]));
+	      measuresToMaximize.push_back(new MinSize(attributeId, cardinalities[attributeId], minSizes[attributeId]));
 	      ++maximizedSizeDimensionIt;
 	    }
 	  else
 	    {
 	      const unsigned int minSize = minSizes[attributeId];
+	      minAreaAccordingToSizes *= minSize;
 	      if (minSize != 0)
 		{
 		  mereConstraints.push_back(new MinSize(attributeId, cardinalities[attributeId], minSize));
 		}
 	    }
+	}
+      // Initializing MaxSize measures
+      sort(minimizedSizeDimensions.begin(), minimizedSizeDimensions.end());
+      vector<unsigned int>::const_iterator minimizedSizeDimensionIt = minimizedSizeDimensions.begin();
+      for (unsigned int attributeId = 0; attributeId != n; ++attributeId)
+	{
 	  if (minimizedSizeDimensionIt != minimizedSizeDimensions.end() && *minimizedSizeDimensionIt == attributeId)
 	    {
+	      nonMinSizeMeasuresToMaximize.push_back(new MaxSize(attributeId, maxSizes[attributeId]));
 	      ++minimizedSizeDimensionIt;
 	    }
 	  else
@@ -159,15 +151,15 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	}
       // Initializing minArea measure
-      if (isAreaMaximized)
+      if (isAreaMaximized && maximizedSizeDimensions.size() != n)
 	{
-	  minSizeMeasuresToMaximize.push_back(new MinArea(cardinalities, static_cast<unsigned int>(minArea)));
+	  measuresToMaximize.push_back(new MinArea(cardinalities, minArea));
 	}
       else
 	{
-	  if (minArea != 0)
+	  if (minArea > minAreaAccordingToSizes)
 	    {
-	      mereConstraints.push_back(new MinArea(cardinalities, static_cast<unsigned int>(minArea)));
+	      mereConstraints.push_back(new MinArea(cardinalities, minArea));
 	    }
 	}
       // Initializing maxArea measure
@@ -175,11 +167,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	{
 	  if (maxArea == -1)
 	    {
-	      measuresToMinimize.push_back(new MaxArea(n, numeric_limits<unsigned int>::max()));
+	      nonMinSizeMeasuresToMaximize.push_back(new MaxArea(n, numeric_limits<unsigned int>::max()));
 	    }
 	  else
 	    {
-	      measuresToMinimize.push_back(new MaxArea(n, maxArea));
+	      nonMinSizeMeasuresToMaximize.push_back(new MaxArea(n, maxArea));
 	    }
 	}
       else
@@ -189,26 +181,16 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	      mereConstraints.push_back(new MaxArea(n, maxArea));
 	    }
 	}
-      // Initializing groups
       if (!groupFileNames.empty())
 	{
+	  // Initializing groups
 	  GroupMeasure::initGroups(groupFileNames, groupElementSeparator, groupDimensionElementsSeparator, cardinalities, labels2Ids, external2InternalAttributeOrder);
-	  bool isEveryGroupElementToBePresent = true;
 	  // groupMinSizes is to be modified according to the diagonals of MinGroupCoverRatios, MinGroupCoverPiatetskyShapiros, MinGroupCoverLeverages, MinGroupCoverForces, MinGroupCoverYulesQ and MinGroupCoverYulesY
-	  if (!groupMinSizes.empty())
-	    {
-	      isEveryGroupElementToBePresent = false;
-	    }
+	  vector<unsigned int> groupMinSizes = groupMinSizesParam;
 	  groupMinSizes.resize(groupFileNames.size());
-	  // Ordering the ids of the groups to be maximally covered according to sky-gs option
-	  if (!groupMaximizedSizes.empty())
-	    {
-	      isEveryGroupElementToBePresent = false;
-	    }
 	  // Initializing MinGroupCoverRatio measures
 	  if (!groupMaximizedRatios.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int rowId = 0;
 	      for (const vector<float>& maximizedRow : groupMaximizedRatios)
 		{
@@ -233,11 +215,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			    {
 			      if (groupMinRatios.size() > rowId && groupMinRatios[rowId].size() > columnId)
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverRatio(rowId, columnId, groupMinRatios[rowId][columnId]));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverRatio(rowId, columnId, groupMinRatios[rowId][columnId]));
 				}
 			      else
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverRatio(rowId, columnId, 0));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverRatio(rowId, columnId, 0));
 				}
 			    }
 			}
@@ -248,7 +230,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  if (!groupMinRatios.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinRatios)
@@ -264,7 +245,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			{
 			  if (rowId == columnId)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(ratio);
+			      const unsigned int groupMinSizeAccordingToMatrix = ratio;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -287,7 +268,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	  // Initializing MinGroupCoverPiatetskyShapiro measures
 	  if (!groupMaximizedPiatetskyShapiros.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int rowId = 0;
 	      for (const vector<float>& maximizedRow : groupMaximizedPiatetskyShapiros)
 		{
@@ -312,11 +292,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			    {
 			      if (groupMinPiatetskyShapiros.size() > rowId && groupMinPiatetskyShapiros[rowId].size() > columnId)
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverPiatetskyShapiro(rowId, columnId, groupMinPiatetskyShapiros[rowId][columnId]));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverPiatetskyShapiro(rowId, columnId, groupMinPiatetskyShapiros[rowId][columnId]));
 				}
 			      else
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverPiatetskyShapiro(rowId, columnId, -numeric_limits<float>::infinity()));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverPiatetskyShapiro(rowId, columnId, -numeric_limits<float>::infinity()));
 				}
 			    }
 			}
@@ -327,7 +307,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  if (!groupMinPiatetskyShapiros.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinPiatetskyShapiros)
@@ -341,7 +320,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 		    {
 		      if (rowId == columnId)
 			{
-			  const int groupMinSizeAccordingToMatrix = static_cast<int>(piatetskyShapiro);
+			  const int groupMinSizeAccordingToMatrix = piatetskyShapiro;
 			  if (groupMinSizeAccordingToMatrix > static_cast<int>(*groupMinSizeIt))
 			    {
 			      *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -349,7 +328,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			}
 		      else
 			{
-			  if (-static_cast<float>(GroupMeasure::maxCoverOfGroup(rowId)) < piatetskyShapiro * static_cast<float>(GroupMeasure::maxCoverOfGroup(columnId)) && !(groupMaximizedPiatetskyShapiros.size() > rowId && groupMaximizedPiatetskyShapiros[rowId].size() > columnId && groupMaximizedPiatetskyShapiros[rowId][columnId] != 0))
+			  if (-GroupMeasure::maxCoverOfGroup(rowId) < piatetskyShapiro * GroupMeasure::maxCoverOfGroup(columnId) && !(groupMaximizedPiatetskyShapiros.size() > rowId && groupMaximizedPiatetskyShapiros[rowId].size() > columnId && groupMaximizedPiatetskyShapiros[rowId][columnId] != 0))
 			    {
 			      mereConstraints.push_back(new MinGroupCoverPiatetskyShapiro(rowId, columnId, piatetskyShapiro));
 			    }
@@ -363,7 +342,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	  // Initializing MinGroupCoverLeverage measures
 	  if (!groupMaximizedLeverages.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int rowId = 0;
 	      for (const vector<float>& maximizedRow : groupMaximizedLeverages)
 		{
@@ -388,11 +366,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			    {
 			      if (groupMinLeverages.size() > rowId && groupMinLeverages[rowId].size() > columnId)
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverLeverage(rowId, columnId, groupMinLeverages[rowId][columnId]));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverLeverage(rowId, columnId, groupMinLeverages[rowId][columnId]));
 				}
 			      else
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverLeverage(rowId, columnId, -numeric_limits<float>::infinity()));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverLeverage(rowId, columnId, -numeric_limits<float>::infinity()));
 				}
 			    }
 			}
@@ -403,7 +381,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  if (!groupMinLeverages.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinLeverages)
@@ -417,7 +394,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 		    {
 		      if (rowId == columnId)
 			{
-			  const int groupMinSizeAccordingToMatrix = static_cast<int>(leverage);
+			  const int groupMinSizeAccordingToMatrix = leverage;
 			  if (groupMinSizeAccordingToMatrix > static_cast<int>(*groupMinSizeIt))
 			    {
 			      *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -425,7 +402,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			}
 		      else
 			{
-			  if (-static_cast<float>(GroupMeasure::maxCoverOfGroup(rowId)) < leverage * static_cast<float>(GroupMeasure::maxCoverOfGroup(columnId)) && !(groupMaximizedLeverages.size() > rowId && groupMaximizedLeverages[rowId].size() > columnId && groupMaximizedLeverages[rowId][columnId] != 0))
+			  if (-GroupMeasure::maxCoverOfGroup(rowId) < leverage * GroupMeasure::maxCoverOfGroup(columnId) && !(groupMaximizedLeverages.size() > rowId && groupMaximizedLeverages[rowId].size() > columnId && groupMaximizedLeverages[rowId][columnId] != 0))
 			    {
 			      mereConstraints.push_back(new MinGroupCoverLeverage(rowId, columnId, leverage));
 			    }
@@ -439,7 +416,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	  // Initializing MinGroupCoverForce measures
 	  if (!groupMaximizedForces.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int rowId = 0;
 	      for (const vector<float>& maximizedRow : groupMaximizedForces)
 		{
@@ -464,11 +440,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			    {
 			      if (groupMinForces.size() > rowId && groupMinForces[rowId].size() > columnId)
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverForce(rowId, columnId, groupMinForces[rowId][columnId]));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverForce(rowId, columnId, groupMinForces[rowId][columnId]));
 				}
 			      else
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverForce(rowId, columnId, 0));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverForce(rowId, columnId, 0));
 				}
 			    }
 			}
@@ -479,7 +455,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  if (!groupMinForces.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinForces)
@@ -495,7 +470,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			{
 			  if (rowId == columnId)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(force);
+			      const unsigned int groupMinSizeAccordingToMatrix = force;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -518,7 +493,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	  // Initializing MinGroupCoverYulesQ measures
 	  if (!groupMaximizedYulesQs.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int rowId = 0;
 	      for (const vector<float>& maximizedRow : groupMaximizedYulesQs)
 		{
@@ -543,11 +517,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			    {
 			      if (groupMinYulesQs.size() > rowId && groupMinYulesQs[rowId].size() > columnId)
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverYulesQ(rowId, columnId, groupMinYulesQs[rowId][columnId]));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverYulesQ(rowId, columnId, groupMinYulesQs[rowId][columnId]));
 				}
 			      else
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverYulesQ(rowId, columnId, -1));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverYulesQ(rowId, columnId, -1));
 				}
 			    }
 			}
@@ -558,7 +532,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  if (!groupMinYulesQs.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinYulesQs)
@@ -574,7 +547,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			{
 			  if (yulesQ > 0)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(yulesQ);
+			      const unsigned int groupMinSizeAccordingToMatrix = yulesQ;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -597,7 +570,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	  // Initializing MinGroupCoverYulesY measures
 	  if (!groupMaximizedYulesYs.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      unsigned int rowId = 0;
 	      for (const vector<float>& maximizedRow : groupMaximizedYulesYs)
 		{
@@ -622,11 +594,11 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			    {
 			      if (groupMinYulesYs.size() > rowId && groupMinYulesYs[rowId].size() > columnId)
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverYulesY(rowId, columnId, groupMinYulesYs[rowId][columnId]));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverYulesY(rowId, columnId, groupMinYulesYs[rowId][columnId]));
 				}
 			      else
 				{
-				  measuresToMaximize.push_back(new MinGroupCoverYulesY(rowId, columnId, -1));
+				  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCoverYulesY(rowId, columnId, -1));
 				}
 			    }
 			}
@@ -637,7 +609,6 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  if (!groupMinYulesYs.empty())
 	    {
-	      isEveryGroupElementToBePresent = false;
 	      vector<unsigned int>::iterator groupMinSizeIt = groupMinSizes.begin();
 	      unsigned int rowId = 0;
 	      for (const vector<float>& row : groupMinYulesYs)
@@ -653,7 +624,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 			{
 			  if (yulesY > 0)
 			    {
-			      const unsigned int groupMinSizeAccordingToMatrix = static_cast<unsigned int>(yulesY);
+			      const unsigned int groupMinSizeAccordingToMatrix = yulesY;
 			      if (groupMinSizeAccordingToMatrix > *groupMinSizeIt)
 				{
 				  *groupMinSizeIt = groupMinSizeAccordingToMatrix;
@@ -674,13 +645,14 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 		}
 	    }
 	  // Initializing MinGroupCover measures
+	  const vector<unsigned int>::const_iterator end = groupMinSizes.end();
 	  vector<unsigned int>::const_iterator groupMinSizeIt = groupMinSizes.begin();
 	  vector<unsigned int>::const_iterator groupMaximizedSizeIt = groupMaximizedSizes.begin();
-	  for (unsigned int groupId = 0; groupMinSizeIt != groupMinSizes.end(); ++groupId)
+	  for (unsigned int groupId = 0; groupMinSizeIt != end; ++groupId)
 	    {
 	      if (groupMaximizedSizeIt != groupMaximizedSizes.end() && *groupMaximizedSizeIt == groupId)
 		{
-		  measuresToMaximize.push_back(new MinGroupCover(groupId, *groupMinSizeIt));
+		  nonMinSizeMeasuresToMaximize.push_back(new MinGroupCover(groupId, *groupMinSizeIt));
 		  ++groupMaximizedSizeIt;
 		}
 	      else
@@ -693,22 +665,13 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	      ++groupMinSizeIt;
 	    }
 	  // Initializing MaxGroupCover measures
-	  if (!groupMaxSizes.empty())
-	    {
-	      isEveryGroupElementToBePresent = false;
-	    }
-	  vector<unsigned int> groupMinimizedSizes(groupMinimizedSizesParam);
-	  if (!groupMinimizedSizes.empty())
-	    {
-	      isEveryGroupElementToBePresent = false;
-	    }
 	  vector<unsigned int>::const_iterator groupMinimizedSizeIt = groupMinimizedSizes.begin();
 	  unsigned int groupId = 0;
 	  for (const unsigned int groupMaxSize : groupMaxSizes)
 	    {
 	      if (groupMinimizedSizeIt != groupMinimizedSizes.end() && *groupMinimizedSizeIt == groupId)
 		{
-		  measuresToMinimize.push_back(new MaxGroupCover(groupId, groupMaxSize));
+		  nonMinSizeMeasuresToMaximize.push_back(new MaxGroupCover(groupId, groupMaxSize));
 		  ++groupMinimizedSizeIt;
 		}
 	      else
@@ -722,9 +685,9 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 	    }
 	  for (; groupMinimizedSizeIt != groupMinimizedSizes.end(); ++groupMinimizedSizeIt)
 	    {
-	      measuresToMinimize.push_back(new MaxGroupCover(*groupMinimizedSizeIt, GroupMeasure::maxCoverOfGroup(*groupMinimizedSizeIt)));
+	      nonMinSizeMeasuresToMaximize.push_back(new MaxGroupCover(*groupMinimizedSizeIt, GroupMeasure::maxCoverOfGroup(*groupMinimizedSizeIt)));
 	    }
-	  if (isEveryGroupElementToBePresent)
+	  if (groupMinSizesParam.empty() && groupMaximizedSizes.empty() && groupMaxSizes.empty() && groupMinimizedSizes.empty() && groupMinRatios.empty() && groupMaximizedRatios.empty() && groupMinPiatetskyShapiros.empty() && groupMaximizedPiatetskyShapiros.empty() && groupMinLeverages.empty() && groupMaximizedLeverages.empty() && groupMinForces.empty() && groupMaximizedForces.empty() && groupMinYulesQs.empty() && groupMaximizedYulesQs.empty() && groupMinYulesYs.empty() && groupMaximizedYulesYs.empty())
 	    {
 	      for (groupId = 0; groupId != groupFileNames.size(); ++groupId)
 		{
@@ -732,6 +695,32 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
 		}
 	    }
 	  GroupMeasure::allMeasuresSet();
+	}
+      // Initializing min utility measure
+      const string utilityValueFileNameString(utilityValueFileName);
+      if (!utilityValueFileNameString.empty())
+	{
+	  if (isUtilityMaximized)
+	    {
+	      nonMinSizeMeasuresToMaximize.push_back(new MinUtility(utilityValueFileNameString, valueDimensionSeparator, valueElementSeparator, labels2Ids, external2InternalAttributeOrder, cardinalities, densityThreshold, minUtility));
+	    }
+	  else
+	    {
+	      mereConstraints.push_back(new MinUtility(utilityValueFileNameString, valueDimensionSeparator, valueElementSeparator, labels2Ids, external2InternalAttributeOrder, cardinalities, densityThreshold, minUtility));
+	    }
+	}
+      // Initializing min slope measure
+      const string slopePointFileNameString(slopePointFileName);
+      if (!slopePointFileNameString.empty())
+	{
+	  if (isSlopeMaximized)
+	    {
+	      nonMinSizeMeasuresToMaximize.push_back(new MinSlope(slopePointFileNameString, pointDimensionSeparator, pointElementSeparator, labels2Ids, external2InternalAttributeOrder, cardinalities, densityThreshold, minSlope));
+	    }
+	  else
+	    {
+	      mereConstraints.push_back(new MinSlope(slopePointFileNameString, pointDimensionSeparator, pointElementSeparator, labels2Ids, external2InternalAttributeOrder, cardinalities, densityThreshold, minSlope));
+	    }
 	}
     }
   catch (std::exception& e)
@@ -741,6 +730,12 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
       rethrow_exception(current_exception());
     }
   labels2Ids.clear();
+  TupleMeasure::allMeasuresSet(cardinalities);
+  stable_partition(mereConstraints.begin(), mereConstraints.end(), monotone);
+  nonMinSizeMeasuresIndex = measuresToMaximize.size();
+  stable_partition(nonMinSizeMeasuresToMaximize.begin(), nonMinSizeMeasuresToMaximize.end(), monotone);
+  measuresToMaximize.insert(measuresToMaximize.end(), nonMinSizeMeasuresToMaximize.begin(), nonMinSizeMeasuresToMaximize.end());
+  isSomeOptimizedMeasureNotMonotone = !measuresToMaximize.back()->monotone();
 }
 
 void SkyPatternTree::terminate()
@@ -772,24 +767,11 @@ const bool SkyPatternTree::violationAfterAdding(const unsigned int dimensionIdOf
     {
       return true;
     }
-  for (Measure* measure : minSizeMeasuresToMaximize)
-    {
-      if (measure->violationAfterAdding(dimensionIdOfElementsSetPresent, elementsSetPresent))
-	{
-	  return true;
-	}
-    }
-  for (Measure* measure : measuresToMinimize)
-    {
-      if (measure->violationAfterAdding(dimensionIdOfElementsSetPresent, elementsSetPresent))
-	{
-	  return true;
-	}
-    }
   for (Measure* measure : measuresToMaximize)
     {
       if (measure->violationAfterAdding(dimensionIdOfElementsSetPresent, elementsSetPresent))
 	{
+	  isEnumeratedElementPotentiallyPreventingClosedness = true;
 	  return true;
 	}
     }
@@ -802,63 +784,58 @@ const bool SkyPatternTree::violationAfterRemoving(const unsigned int dimensionId
     {
       return true;
     }
-  for (Measure* measure : minSizeMeasuresToMaximize)
-    {
-      if (measure->violationAfterRemoving(dimensionIdOfElementsSetAbsent, elementsSetAbsent))
-	{
-	  return true;
-	}
-    }
-  for (Measure* measure : measuresToMinimize)
-    {
-      if (measure->violationAfterRemoving(dimensionIdOfElementsSetAbsent, elementsSetAbsent))
-	{
-	  return true;
-	}
-    }
   for (Measure* measure : measuresToMaximize)
     {
       if (measure->violationAfterRemoving(dimensionIdOfElementsSetAbsent, elementsSetAbsent))
 	{
+	  if (!measure->monotone())
+	    {
+	      isEnumeratedElementPotentiallyPreventingClosedness = true;
+	    }
 	  return true;
 	}
     }
   return false;
 }
 
-const bool SkyPatternTree::dominated() const
+const bool SkyPatternTree::dominated()
 {
-  return dominated(measuresToMinimize, measuresToMaximize, minSizeMeasuresToMaximize);
+  if (dominated(measuresToMaximize))
+    {
+      if (isSomeOptimizedMeasureNotMonotone)
+	{
+	  isEnumeratedElementPotentiallyPreventingClosedness = true;
+	}
+      return true;
+    }
+  return false;
 }
 
-const bool SkyPatternTree::dominated(const vector<Measure*>& measuresToMinimize, const vector<Measure*>& measuresToMaximize, const vector<Measure*>& minSizeMeasuresToMaximize)
+const bool SkyPatternTree::dominated(const vector<Measure*>& measuresToMaximize)
 {
   minSizeSkyline.clear();
   vector<unsigned int> minSizeMeasures;
-  minSizeMeasures.reserve(minSizeMeasuresToMaximize.size());
-  for (const Measure* measure : minSizeMeasuresToMaximize)
+  minSizeMeasures.reserve(nonMinSizeMeasuresIndex);
+  vector<Measure*>::const_iterator measureIt = measuresToMaximize.begin();
+  vector<Measure*>::const_iterator end = measureIt + nonMinSizeMeasuresIndex;
+  for (; measureIt != end; ++measureIt)
     {
-      minSizeMeasures.push_back(static_cast<unsigned int>(measure->optimisticValue()));
-    }
-  vector<float> minimizedMeasures;
-  minimizedMeasures.reserve(measuresToMinimize.size());
-  for (const Measure* measure : measuresToMinimize)
-    {
-      minimizedMeasures.push_back(measure->optimisticValue());
+      minSizeMeasures.push_back((*measureIt)->optimisticValue());
     }
   vector<float> maximizedMeasures;
-  maximizedMeasures.reserve(measuresToMaximize.size());
-  for (const Measure* measure : measuresToMaximize)
+  maximizedMeasures.reserve(measuresToMaximize.size() - nonMinSizeMeasuresIndex);
+  end = measuresToMaximize.end();
+  for (; measureIt != end; ++measureIt)
     {
-      maximizedMeasures.push_back(measure->optimisticValue());
+      maximizedMeasures.push_back((*measureIt)->optimisticValue());
     }
   for (IndistinctSkyPatterns* indistinctSkyPatterns : skyPatterns)
     {
-      if (indistinctSkyPatterns->indistinctOrDominates(minimizedMeasures, maximizedMeasures))
+      if (indistinctSkyPatterns->indistinctOrDominates(maximizedMeasures))
 	{
 	  if (indistinctSkyPatterns->minSizeIndistinctOrDominates(minSizeMeasures))
 	    {
-	      if (indistinctSkyPatterns->minSizeDistinct(minSizeMeasures) || indistinctSkyPatterns->distinct(minimizedMeasures, maximizedMeasures))
+	      if (indistinctSkyPatterns->minSizeDistinct(minSizeMeasures) || indistinctSkyPatterns->distinct(maximizedMeasures))
 		{
 #ifdef DEBUG
 		  cout << "Dominated by the measures " << *indistinctSkyPatterns << " associated with a closed " << external2InternalAttributeOrder.size() << "-set in the current skyline -> Prune!" << endl;
@@ -878,7 +855,7 @@ const bool SkyPatternTree::dominated(const vector<Measure*>& measuresToMinimize,
 #ifdef MIN_SIZE_ELEMENT_PRUNING
 vector<unsigned int> SkyPatternTree::minSizeIrrelevancyThresholds() const
 {
-  if (IndistinctSkyPatterns::noSizeOrAreaMaximized() || minSizeSkyline.empty())
+ if (IndistinctSkyPatterns::noSizeOrAreaMaximized() || minSizeSkyline.empty())
     {
       return Tree::minSizeIrrelevancyThresholds();
     }
@@ -899,10 +876,10 @@ vector<unsigned int> SkyPatternTree::minSizeIrrelevancyThresholds() const
       maxNbOfSymmetricElements = 0;
       for (unsigned int dimensionId = 0; dimensionId != n; ++dimensionId)
 	{
-	  const unsigned int size = max(*minSizeIt, static_cast<unsigned int>((*attributeIt)->sizeOfPresent()));
+	  const unsigned int size = max(*minSizeIt, (*attributeIt)->sizeOfPresent());
 	  minimalPatternArea *= size;
 	  minimalPatternSizes.push_back(size);
-	  maximalPatternSizes.push_back((*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential());
+	  maximalPatternSizes.push_back((*attributeIt)->sizeOfPresentAndPotential());
 	  ++attributeIt;
 	  ++minSizeIt;
 	}
@@ -914,13 +891,13 @@ vector<unsigned int> SkyPatternTree::minSizeIrrelevancyThresholds() const
       double minNbOfSymmetricElementsAccordingToArea = minArea;
       for (unsigned int dimensionId = 0; dimensionId != n; ++dimensionId)
 	{
-	  unsigned int size = max(*minSizeIt, static_cast<unsigned int>((*attributeIt)->sizeOfPresent()));
+	  unsigned int size = max(*minSizeIt, (*attributeIt)->sizeOfPresent());
 	  minimalPatternArea *= size;
 	  minimalPatternSizes.push_back(size);
-	  size = (*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential();
+	  size = (*attributeIt)->sizeOfPresentAndPotential();
 	  if (dimensionId < firstSymmetricAttributeId || dimensionId > lastSymmetricAttributeId)
 	    {
-	      minNbOfSymmetricElementsAccordingToArea /= static_cast<double>(size);
+	      minNbOfSymmetricElementsAccordingToArea /= size;
 	    }
 	  else
 	    {
@@ -938,10 +915,10 @@ vector<unsigned int> SkyPatternTree::minSizeIrrelevancyThresholds() const
 	  ++minSizeIt;
 	}
       // TODO: check whether round-off errors are problematic (round instead of ceil?)
-      minNbOfSymmetricElementsAccordingToArea = ceil(pow(minNbOfSymmetricElementsAccordingToArea, 1 / static_cast<double>(lastSymmetricAttributeId - firstSymmetricAttributeId + 1)));
-      if (static_cast<unsigned int>(minNbOfSymmetricElementsAccordingToArea) > minNbOfSymmetricElements)
+      minNbOfSymmetricElementsAccordingToArea = ceil(pow(minNbOfSymmetricElementsAccordingToArea, 1. / (lastSymmetricAttributeId - firstSymmetricAttributeId + 1)));
+      if (minNbOfSymmetricElementsAccordingToArea > minNbOfSymmetricElements)
 	{
-	  minNbOfSymmetricElements = static_cast<unsigned int>(minNbOfSymmetricElementsAccordingToArea);
+	  minNbOfSymmetricElements = minNbOfSymmetricElementsAccordingToArea;
 	}
       vector<unsigned int>::iterator minimalPatternSizeIt = minimalPatternSizes.begin() + firstSymmetricAttributeId;
       for (unsigned int symmetricAttributeId = firstSymmetricAttributeId; symmetricAttributeId <= lastSymmetricAttributeId; ++symmetricAttributeId)
@@ -959,7 +936,7 @@ vector<unsigned int> SkyPatternTree::minSizeIrrelevancyThresholds() const
     {
       *thresholdIt++ += Attribute::noisePerUnit * IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(maximalPatternSizes, dimensionId, minNbOfSymmetricElements);
       // TODO: check whether round-off errors are problematic (round instead of ceil?)
-      nonSelfLoopTuplesInMinimalPattern.push_back(max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, minNbOfSymmetricElements)), ceil(minArea / ((*attributeIt)->sizeOfPresent() + (*attributeIt)->sizeOfPotential()))));
+      nonSelfLoopTuplesInMinimalPattern.push_back(max(static_cast<double>(IndistinctSkyPatterns::nbOfNonSelfLoopTuplesInHyperplaneOfPattern(minimalPatternSizes, dimensionId, minNbOfSymmetricElements)), ceil(minArea / ((*attributeIt)->sizeOfPresentAndPotential()))));
     }
   // Additionnaly consider the non-domination by any sky-pattern
   if (firstSymmetricAttributeId != numeric_limits<unsigned int>::max())
@@ -996,35 +973,32 @@ vector<unsigned int> SkyPatternTree::minSizeIrrelevancyThresholds() const
 void SkyPatternTree::validPattern() const
 {
   vector<unsigned int> minSizeMeasures;
-  minSizeMeasures.reserve(minSizeMeasuresToMaximize.size());
-  for (const Measure* measure : minSizeMeasuresToMaximize)
+  minSizeMeasures.reserve(nonMinSizeMeasuresIndex);
+  vector<Measure*>::const_iterator measureIt = measuresToMaximize.begin();
+  vector<Measure*>::const_iterator end = measureIt + nonMinSizeMeasuresIndex;
+  for (; measureIt != end; ++measureIt)
     {
-      minSizeMeasures.push_back(static_cast<unsigned int>(measure->optimisticValue()));
-    }
-  vector<float> minimizedMeasures;
-  minimizedMeasures.reserve(measuresToMinimize.size());
-  for (const Measure* measure : measuresToMinimize)
-    {
-      minimizedMeasures.push_back(measure->optimisticValue());
+      minSizeMeasures.push_back((*measureIt)->optimisticValue());
     }
   vector<float> maximizedMeasures;
-  maximizedMeasures.reserve(measuresToMaximize.size());
-  for (const Measure* measure : measuresToMaximize)
+  maximizedMeasures.reserve(measuresToMaximize.size() - nonMinSizeMeasuresIndex);
+  end = measuresToMaximize.end();
+  for (; measureIt != end; ++measureIt)
     {
-      maximizedMeasures.push_back(measure->optimisticValue());
+      maximizedMeasures.push_back((*measureIt)->optimisticValue());
     }
   vector<vector<unsigned int>> skyPattern;
   skyPattern.reserve(attributes.size());
   for (const Attribute* attribute : attributes)
     {
-      skyPattern.push_back(attribute->getPresentOriginalIds());
+      skyPattern.push_back(attribute->getPresentDataIds());
     }
   vector<IndistinctSkyPatterns*>::iterator indistinctSkyPatternsIt = skyPatterns.begin();
   while (indistinctSkyPatternsIt != skyPatterns.end())
     {
-      if ((*indistinctSkyPatternsIt)->minSizeIndistinctOrDominatedBy(minSizeMeasures) && (*indistinctSkyPatternsIt)->indistinctOrDominatedBy(minimizedMeasures, maximizedMeasures))
+      if ((*indistinctSkyPatternsIt)->minSizeIndistinctOrDominatedBy(minSizeMeasures) && (*indistinctSkyPatternsIt)->indistinctOrDominatedBy(maximizedMeasures))
 	{
-	  if ((*indistinctSkyPatternsIt)->minSizeDistinct(minSizeMeasures) || (*indistinctSkyPatternsIt)->distinct(minimizedMeasures, maximizedMeasures))
+	  if ((*indistinctSkyPatternsIt)->minSizeDistinct(minSizeMeasures) || (*indistinctSkyPatternsIt)->distinct(maximizedMeasures))
 	    {
 #ifdef DEBUG
 	      cout << "Removing from the current skyline the now dominated closed " << attributes.size() << "-set(s) associated with the measures " << **indistinctSkyPatternsIt << endl;
@@ -1052,7 +1026,7 @@ void SkyPatternTree::validPattern() const
     }
   if (indistinctSkyPatternsIt == skyPatterns.end())
     {
-      skyPatterns.push_back(new IndistinctSkyPatterns(skyPattern, minimizedMeasures, maximizedMeasures));
+      skyPatterns.push_back(new IndistinctSkyPatterns(skyPattern, maximizedMeasures));
 #ifdef DEBUG
       cout << "Inserting the pattern in the current skyline as the first member of a new class of closed " << attributes.size() << "-set(s) associated with the measures " << *(skyPatterns.back()) << endl;
 #endif
@@ -1094,7 +1068,11 @@ void SkyPatternTree::printNSets(const vector<vector<vector<unsigned int>>>& nSet
 		{
 		  Attribute::printOutputElementSeparator(out);
 		}
-	      attribute.printValueFromOriginalId(elementId, out);
+	      attribute.printValueFromDataId(elementId, out);
+	    }
+	  if (isFirstElement)
+	    {
+	      Attribute::printEmptySetString(out);
 	    }
 	}
       if (isSizePrinted)

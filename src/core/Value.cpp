@@ -10,37 +10,37 @@
 
 #include "Value.h"
 
-Value::Value(const unsigned int idParam): id(idParam), originalId(idParam), presentNoise(0), presentAndPotentialNoise(0), noiseInIntersectionWithPresentValues(), noiseInIntersectionWithPresentAndPotentialValues()
+Value::Value(const unsigned int dataIdParam): dataId(dataIdParam), intersectionId(dataIdParam), presentNoise(0), presentAndPotentialNoise(0), intersectionsWithPresentValues(), intersectionsWithPresentAndPotentialValues()
 {
 }
 
-Value::Value(const unsigned int idParam, const unsigned int presentAndPotentialNoiseParam, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeBegin, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeEnd, const vector<unsigned int>& noisesInIntersections): id(idParam), originalId(idParam), presentNoise(0), presentAndPotentialNoise(presentAndPotentialNoiseParam), noiseInIntersectionWithPresentValues(), noiseInIntersectionWithPresentAndPotentialValues()
+Value::Value(const unsigned int dataIdParam, const unsigned int presentAndPotentialNoiseParam, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeBegin, const vector<unsigned int>::const_iterator nbOfValuesPerAttributeEnd, const vector<unsigned int>& noisesInIntersections): dataId(dataIdParam), intersectionId(dataIdParam), presentNoise(0), presentAndPotentialNoise(presentAndPotentialNoiseParam), intersectionsWithPresentValues(), intersectionsWithPresentAndPotentialValues()
 {
-  noiseInIntersectionWithPresentValues.reserve(noisesInIntersections.size());
-  noiseInIntersectionWithPresentAndPotentialValues.reserve(noisesInIntersections.size());
+  intersectionsWithPresentValues.reserve(noisesInIntersections.size());
+  intersectionsWithPresentAndPotentialValues.reserve(noisesInIntersections.size());
   vector<unsigned int>::const_iterator sizeOfIntersectionIt = noisesInIntersections.begin();
   for (vector<unsigned int>::const_iterator nbOfValuesPerAttributeIt = nbOfValuesPerAttributeBegin; nbOfValuesPerAttributeIt != nbOfValuesPerAttributeEnd; ++nbOfValuesPerAttributeIt)
     {
-      vector<unsigned int> noiseInIntersectionWithPresent(*nbOfValuesPerAttributeIt);
-      noiseInIntersectionWithPresentValues.push_back(noiseInIntersectionWithPresent);
-      vector<unsigned int> noiseInIntersectionWithPresentAndPotential(*nbOfValuesPerAttributeIt, *sizeOfIntersectionIt++);
-      noiseInIntersectionWithPresentAndPotentialValues.push_back(noiseInIntersectionWithPresentAndPotential);
+      vector<unsigned int> intersectionsWithPresent(*nbOfValuesPerAttributeIt);
+      intersectionsWithPresentValues.push_back(intersectionsWithPresent);
+      vector<unsigned int> intersectionsWithPresentAndPotential(*nbOfValuesPerAttributeIt, *sizeOfIntersectionIt++);
+      intersectionsWithPresentAndPotentialValues.push_back(intersectionsWithPresentAndPotential);
     }
 }
 
-Value::Value(const Value& parent, const unsigned int idParam, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd): id(idParam), originalId(parent.originalId), presentNoise(parent.presentNoise), presentAndPotentialNoise(parent.presentAndPotentialNoise), noiseInIntersectionWithPresentValues(), noiseInIntersectionWithPresentAndPotentialValues()
+Value::Value(const Value& parent, const unsigned int intersectionIdParam, const vector<unsigned int>::const_iterator sizeOfAttributeIt, const vector<unsigned int>::const_iterator sizeOfAttributeEnd): dataId(parent.dataId), intersectionId(intersectionIdParam), presentNoise(parent.presentNoise), presentAndPotentialNoise(parent.presentAndPotentialNoise), intersectionsWithPresentValues(), intersectionsWithPresentAndPotentialValues()
 {
-  const unsigned int sizeOfIntersections = parent.noiseInIntersectionWithPresentValues.size();
-  noiseInIntersectionWithPresentValues.resize(sizeOfIntersections);
-  vector<vector<unsigned int>>::iterator noiseInIntersectionWithPresentValuesIt = noiseInIntersectionWithPresentValues.begin();
-  noiseInIntersectionWithPresentAndPotentialValues.resize(sizeOfIntersections);
-  vector<vector<unsigned int>>::iterator noiseInIntersectionWithPresentAndPotentialValuesIt = noiseInIntersectionWithPresentAndPotentialValues.begin();
+  const unsigned int sizeOfIntersections = parent.intersectionsWithPresentValues.size();
+  intersectionsWithPresentValues.resize(sizeOfIntersections);
+  vector<vector<unsigned int>>::iterator intersectionsWithPresentValuesIt = intersectionsWithPresentValues.begin();
+  intersectionsWithPresentAndPotentialValues.resize(sizeOfIntersections);
+  vector<vector<unsigned int>>::iterator intersectionsWithPresentAndPotentialValuesIt = intersectionsWithPresentAndPotentialValues.begin();
   for (vector<unsigned int>::const_iterator sizeIt = sizeOfAttributeIt; sizeIt != sizeOfAttributeEnd; ++sizeIt)
     {
-      noiseInIntersectionWithPresentValuesIt->reserve(*sizeIt);
-      ++noiseInIntersectionWithPresentValuesIt;
-      noiseInIntersectionWithPresentAndPotentialValuesIt->reserve(*sizeIt);
-      ++noiseInIntersectionWithPresentAndPotentialValuesIt;
+      intersectionsWithPresentValuesIt->reserve(*sizeIt);
+      ++intersectionsWithPresentValuesIt;
+      intersectionsWithPresentAndPotentialValuesIt->reserve(*sizeIt);
+      ++intersectionsWithPresentAndPotentialValuesIt;
     }
 }
 
@@ -56,14 +56,14 @@ const bool Value::operator<(const Value& otherValue) const
 #endif
 }
 
-const unsigned int Value::getId() const
+const unsigned int Value::getIntersectionId() const
 {
-  return id;
+  return intersectionId;
 }
 
-const unsigned int Value::getOriginalId() const
+const unsigned int Value::getDataId() const
 {
-  return originalId;
+  return dataId;
 }
 
 const unsigned int Value::getPresentNoise() const
@@ -88,28 +88,28 @@ void Value::substractPotentialNoise(const unsigned int noise)
 
 vector<vector<unsigned int>>::iterator Value::getIntersectionsBeginWithPresentValues()
 {
-  return noiseInIntersectionWithPresentValues.begin();
+  return intersectionsWithPresentValues.begin();
 }
 
 vector<vector<unsigned int>>::const_iterator Value::getIntersectionsBeginWithPresentValues() const
 {
-  return noiseInIntersectionWithPresentValues.begin();
+  return intersectionsWithPresentValues.begin();
 }
 
 vector<vector<unsigned int>>::iterator Value::getIntersectionsBeginWithPresentAndPotentialValues()
 {
-  return noiseInIntersectionWithPresentAndPotentialValues.begin();
+  return intersectionsWithPresentAndPotentialValues.begin();
 }
 
 vector<vector<unsigned int>>::const_iterator Value::getIntersectionsBeginWithPresentAndPotentialValues() const
 {
-  return noiseInIntersectionWithPresentAndPotentialValues.begin();
+  return intersectionsWithPresentAndPotentialValues.begin();
 }
 
 const bool Value::extendsPastPresent(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int intersectionIndex) const
 {
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentNoise + (*valueIt)->noiseInIntersectionWithPresentValues[intersectionIndex][id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentNoise + (*valueIt)->intersectionsWithPresentValues[intersectionIndex][intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -117,9 +117,9 @@ const bool Value::extendsPastPresent(const vector<Value*>::const_iterator valueB
 
 const bool Value::extendsFuturePresent(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int reverseAttributeIndex) const
 {
-  const vector<unsigned int>& presentIntersectionsWithFutureValues = noiseInIntersectionWithPresentValues[noiseInIntersectionWithPresentValues.size() - reverseAttributeIndex];
+  const vector<unsigned int>& presentIntersectionsWithFutureValues = intersectionsWithPresentValues[intersectionsWithPresentValues.size() - reverseAttributeIndex];
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentNoise + presentIntersectionsWithFutureValues[(*valueIt)->id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentNoise + presentIntersectionsWithFutureValues[(*valueIt)->intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -128,7 +128,7 @@ const bool Value::extendsFuturePresent(const vector<Value*>::const_iterator valu
 const bool Value::extendsPastPresentAndPotential(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int intersectionIndex) const
 {
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + (*valueIt)->noiseInIntersectionWithPresentAndPotentialValues[intersectionIndex][id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + (*valueIt)->intersectionsWithPresentAndPotentialValues[intersectionIndex][intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -136,9 +136,9 @@ const bool Value::extendsPastPresentAndPotential(const vector<Value*>::const_ite
 
 const bool Value::extendsFuturePresentAndPotential(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int reverseAttributeIndex) const
 {
-  const vector<unsigned int>& presentAndPotentialIntersectionsWithFutureValues = noiseInIntersectionWithPresentAndPotentialValues[noiseInIntersectionWithPresentAndPotentialValues.size() - reverseAttributeIndex];
+  const vector<unsigned int>& presentAndPotentialIntersectionsWithFutureValues = intersectionsWithPresentAndPotentialValues[intersectionsWithPresentAndPotentialValues.size() - reverseAttributeIndex];
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + presentAndPotentialIntersectionsWithFutureValues[(*valueIt)->id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + presentAndPotentialIntersectionsWithFutureValues[(*valueIt)->intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -147,7 +147,7 @@ const bool Value::extendsFuturePresentAndPotential(const vector<Value*>::const_i
 const bool Value::symmetricValuesExtendPastPresent(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int intersectionIndex) const
 {
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentNoise + (*valueIt)->noiseInIntersectionWithPresentValues[intersectionIndex - 1][id] + (*valueIt)->noiseInIntersectionWithPresentValues[intersectionIndex][id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentNoise + (*valueIt)->intersectionsWithPresentValues[intersectionIndex][intersectionId] + (*valueIt)->intersectionsWithPresentValues[intersectionIndex + 1][intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -155,11 +155,11 @@ const bool Value::symmetricValuesExtendPastPresent(const vector<Value*>::const_i
 
 const bool Value::symmetricValuesExtendFuturePresent(const Value& symmetricValue, const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int reverseAttributeIndex) const
 {
-  const unsigned int intersectionIndex = noiseInIntersectionWithPresentValues.size() - reverseAttributeIndex;
-  const vector<unsigned int>& presentIntersectionsWithFutureValues1 = noiseInIntersectionWithPresentValues[intersectionIndex];
-  const vector<unsigned int>& presentIntersectionsWithFutureValues2 = symmetricValue.noiseInIntersectionWithPresentValues[intersectionIndex + 1];
+  const unsigned int intersectionIndex = intersectionsWithPresentValues.size() - reverseAttributeIndex;
+  const vector<unsigned int>& presentIntersectionsWithFutureValues1 = intersectionsWithPresentValues[intersectionIndex + 1];
+  const vector<unsigned int>& presentIntersectionsWithFutureValues2 = symmetricValue.intersectionsWithPresentValues[intersectionIndex];
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentNoise + presentIntersectionsWithFutureValues1[(*valueIt)->id] + presentIntersectionsWithFutureValues2[(*valueIt)->id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentNoise + presentIntersectionsWithFutureValues1[(*valueIt)->intersectionId] + presentIntersectionsWithFutureValues2[(*valueIt)->intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -168,7 +168,7 @@ const bool Value::symmetricValuesExtendFuturePresent(const Value& symmetricValue
 const bool Value::symmetricValuesExtendPastPresentAndPotential(const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int intersectionIndex) const
 {
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + (*valueIt)->noiseInIntersectionWithPresentAndPotentialValues[intersectionIndex - 1][id] + (*valueIt)->noiseInIntersectionWithPresentAndPotentialValues[intersectionIndex][id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + (*valueIt)->intersectionsWithPresentAndPotentialValues[intersectionIndex][intersectionId] + (*valueIt)->intersectionsWithPresentAndPotentialValues[intersectionIndex + 1][intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
@@ -176,29 +176,29 @@ const bool Value::symmetricValuesExtendPastPresentAndPotential(const vector<Valu
 
 const bool Value::symmetricValuesExtendFuturePresentAndPotential(const Value& symmetricValue, const vector<Value*>::const_iterator valueBegin, const vector<Value*>::const_iterator valueEnd, const unsigned int threshold, const unsigned int reverseAttributeIndex) const
 {
-  const unsigned int intersectionIndex = noiseInIntersectionWithPresentAndPotentialValues.size() - reverseAttributeIndex;
-  const vector<unsigned int>& presentAndPotentialIntersectionsWithFutureValues1 = noiseInIntersectionWithPresentAndPotentialValues[intersectionIndex];
-  const vector<unsigned int>& presentAndPotentialIntersectionsWithFutureValues2 = symmetricValue.noiseInIntersectionWithPresentAndPotentialValues[intersectionIndex + 1];
+  const unsigned int intersectionIndex = intersectionsWithPresentAndPotentialValues.size() - reverseAttributeIndex;
+  const vector<unsigned int>& presentAndPotentialIntersectionsWithFutureValues1 = intersectionsWithPresentAndPotentialValues[intersectionIndex + 1];
+  const vector<unsigned int>& presentAndPotentialIntersectionsWithFutureValues2 = symmetricValue.intersectionsWithPresentAndPotentialValues[intersectionIndex];
   vector<Value*>::const_iterator valueIt = valueBegin;
-  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + presentAndPotentialIntersectionsWithFutureValues1[(*valueIt)->id] + presentAndPotentialIntersectionsWithFutureValues2[(*valueIt)->id] <= threshold; ++valueIt)
+  for (; valueIt != valueEnd && (*valueIt)->presentAndPotentialNoise + presentAndPotentialIntersectionsWithFutureValues1[(*valueIt)->intersectionId] + presentAndPotentialIntersectionsWithFutureValues2[(*valueIt)->intersectionId] <= threshold; ++valueIt)
     {
     }
   return valueIt == valueEnd;
 }
 
 /*debug*/
-// vector<vector<unsigned int>> Value::getNoiseInIntersectionsWithPresentValues() const
+// vector<vector<unsigned int>> Value::getIntersectionsWithPresentValues() const
 // {
-//   return noiseInIntersectionWithPresentValues;
+//   return intersectionsWithPresentValues;
 // }
 
-// vector<vector<unsigned int>> Value::getNoiseInIntersectionsWithPresentAndPotentialValues() const
+// vector<vector<unsigned int>> Value::getIntersectionsWithPresentAndPotentialValues() const
 // {
-//   return noiseInIntersectionWithPresentAndPotentialValues;
+//   return intersectionsWithPresentAndPotentialValues;
 // }
 /*/debug*/
 
-const bool Value::smallerId(const Value* value, const Value* otherValue)
+const bool Value::smallerDataId(const Value* value, const Value* otherValue)
 {
-  return value->getId() < otherValue->getId();
+  return value->getDataId() < otherValue->getDataId();
 }

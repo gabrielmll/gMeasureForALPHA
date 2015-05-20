@@ -12,6 +12,7 @@
 #define NODE_H_
 
 #include <set>
+#include <iostream>
 
 #include "../utilities/list_iterator_hash.h"
 #include "Trie.h"
@@ -22,25 +23,28 @@ class Node
   Node(const vector<Attribute*>& attributes);
   Node(const vector<vector<unsigned int>>& nSet, const Trie* data);
 
-  const vector<Element>& dimension(const unsigned int dimensionId) const;
-  const unsigned int area() const;
+  const vector<unsigned int>& dimension(const unsigned int dimensionId) const;
+  const unsigned int getArea() const;
 
+  static void setMaxMembershipMinusShift(double maxMembershipMinusShift);
   static void setMaximalNbOfClosedNSetsForAgglomeration(const unsigned int maximalNbOfClosedNSetsForAgglomeration);
   static void insertOrDelete(Node* leaf);
   static pair<list<Node*>::const_iterator, list<Node*>::const_iterator> agglomerateAndSelect(const Trie* data);
 
  protected:
-  vector<vector<Element>> pattern;  
-  unsigned int intrinsicDistance;
-  int relevance;		/* the area after the construction; the relevance once in dendrogram */
-  vector<vector<Element>::iterator> nextTuple;
+  vector<vector<unsigned int>> pattern;
+  double membershipSum;
+  unsigned int area;
+  double g;
+  double gEstimation;  
+  vector<vector<unsigned int>::const_iterator> nextTuple;
   unordered_set<Node*> parents;
   vector<list<Node*>::iterator> children;
 
+  static double maxMembershipMinusShift;
   static unsigned int maximalNbOfClosedNSets;
   static bool isBelowMaximalNbOfClosedNSets;
-  static unsigned int largestIntrinsicDistance;
-  static int smallestArea;
+  static double smallestG;
 
   static multiset<Node*, const bool(*)(const Node*, const Node*)> leaves;
   static list<Node*> dendrogram;
@@ -55,8 +59,7 @@ class Node
   const unsigned int countLeavesWithRelevanceAbove(const int ancestorRelevance) const;
 
   void unlinkGeneratingPairsInvolving(const Node* child);
-  void computeIntrinsicDistance();
-  const unsigned int setRelevance(const int distanceToParent);
+<  const unsigned int setRelevance(const int distanceToParent);
   void deleteIrrelevantOffspring(const int ancestorRelevance, vector<list<Node*>::iterator>& ancestorChildren);
   vector<list<Node*>::iterator> getParentChildren();
   void insertInDendrogramFrontier();
@@ -65,14 +68,6 @@ class Node
   static const bool morePromising(const Node* node1, const Node* node2);
   static const bool moreRelevant(const Node* node1, const Node* node2);
   static void constructCandidate(const list<Node*>::iterator otherChildIt, const list<Node*>::iterator thisIt);
-
-#ifdef DEBUG_HA
-  static void printCandidates();
-  static void printDendrogramFrontier();
-  static void printDedrogram();
-  static void printLeaves();
-  static void printANode(Node* thisNode);
-#endif
 };
 
 #endif	/*NODE_H*/

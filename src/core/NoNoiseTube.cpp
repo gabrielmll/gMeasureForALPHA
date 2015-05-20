@@ -1,4 +1,4 @@
-// Copyright 2010,2011,2012,2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2010,2011,2012,2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -29,7 +29,7 @@ const unsigned int NoNoiseTube::depth() const
   return 0;
 }
 
-const bool NoNoiseTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<unordered_map<unsigned int, unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
+const bool NoNoiseTube::setTuple(const vector<unsigned int>& tuple, const unsigned int membership, vector<unsigned int>::const_iterator attributeIdIt, vector<vector<unsigned int>>::const_iterator oldIds2NewIdsIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts)
 {
   // Never called
   return false;
@@ -53,7 +53,7 @@ const unsigned int NoNoiseTube::setSelfLoopsAfterSymmetricAttributes(const vecto
   return 0;
 }
 
-const unsigned int NoNoiseTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+const unsigned int NoNoiseTube::setPresent(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
 {
   return 0;
 }
@@ -63,7 +63,13 @@ const unsigned int NoNoiseTube::setPresentAfterPresentValueMet(const vector<Attr
   return 0;
 }
 
-const unsigned int NoNoiseTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, Value& presentValue, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
+const unsigned int NoNoiseTube::setSymmetricPresentAfterPresentValueMet(const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  // Never called
+  return 0;
+}
+
+const unsigned int NoNoiseTube::setPresentAfterPotentialOrAbsentUsed(const vector<Attribute*>::iterator presentAttributeIt, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator potentialOrAbsentValueIntersectionIt) const
 {
   return 0;
 }
@@ -83,6 +89,11 @@ const unsigned int NoNoiseTube::setAbsentAfterAbsentValuesMet(const vector<Attri
   return 0;
 }
 
+const unsigned int NoNoiseTube::setSymmetricAbsentAfterAbsentValueMet(const vector<Attribute*>::iterator attributeIt, vector<vector<vector<unsigned int>>::iterator>& intersectionIts) const
+{
+  return 0;
+}
+
 const unsigned int NoNoiseTube::setAbsentAfterAbsentUsed(const vector<Attribute*>::iterator absentAttributeIt, const vector<unsigned int>& absentValueIds, const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   return 0;
@@ -93,14 +104,19 @@ const unsigned int NoNoiseTube::setAbsentAfterAbsentValuesMetAndAbsentUsed(const
   return 0;
 }
 
-const unsigned int NoNoiseTube::countNoise(const vector<vector<Element>>::iterator dimensionIt) const
+const unsigned int NoNoiseTube::setSymmetricAbsentAfterAbsentValueMetAndAbsentUsed(const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const
 {
   return 0;
 }
 
-pair<unsigned int, const bool> NoNoiseTube::countNoiseUpToThresholds(const vector<unsigned int>::const_iterator noiseThresholdIt, const vector<vector<Element>>::iterator dimensionIt, const vector<vector<Element>::iterator>::iterator tupleIt) const
+const unsigned int NoNoiseTube::countNoise(const vector<vector<unsigned int>>::iterator dimensionIt) const
 {
-  return pair<unsigned int, const bool>(0, false);
+  return 0;
+}
+
+const bool NoNoiseTube::decreaseMembershipDownToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
+{
+  return false;
 }
 
 #ifdef ASSERT

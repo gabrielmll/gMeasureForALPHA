@@ -18,7 +18,7 @@ using namespace std;
 class IndistinctSkyPatterns
 {
  public:
-  IndistinctSkyPatterns(const vector<vector<unsigned int>>& pattern, const vector<float>& minimizedMeasures, const vector<float>& maximizedMeasures);
+  IndistinctSkyPatterns(const vector<vector<unsigned int>>& pattern, const vector<float>& maximizedMeasures);
 
   const bool operator==(const IndistinctSkyPatterns& indistinctSkyPatterns) const; /* equality if indistinct w.r.t. maximized sizes and area */
   friend ostream& operator<<(ostream& out, const IndistinctSkyPatterns& indistinctSkyPatterns);
@@ -27,9 +27,9 @@ class IndistinctSkyPatterns
   void insert(const vector<vector<unsigned int>>& pattern);
   void toNodes(const Trie* data);
   vector<unsigned int> getMinSizeMeasures() const; /* returns the maximized sizes followed by the area if it is maximized */
-  const bool distinct(const vector<float>& otherMinimizedMeasures, const vector<float>& otherMaximizedMeasures) const;
-  const bool indistinctOrDominates(const vector<float>& otherMinimizedMeasures, const vector<float>& otherMaximizedMeasures) const;
-  const bool indistinctOrDominatedBy(const vector<float>& otherMinimizedMeasures, const vector<float>& otherMaximizedMeasures) const;
+  const bool distinct(const vector<float>& otherMaximizedMeasures) const;
+  const bool indistinctOrDominates(const vector<float>& otherMaximizedMeasures) const;
+  const bool indistinctOrDominatedBy(const vector<float>& otherMaximizedMeasures) const;
   const bool minSizeDistinct(const vector<unsigned int>& minSizeMeasures) const; /* minSizeMeasures must contains the optimistic values for the maximized sizes and, if the area is maximized for that measure too (back of the vector) */
   const bool minSizeIndistinctOrDominates(const vector<unsigned int>& minSizeMeasures) const; /* minSizeMeasures must contains the optimistic values for the maximized sizes and, if the area is maximized for that measure too (back of the vector) */
   const bool minSizeIndistinctOrDominatedBy(const vector<unsigned int>& minSizeMeasures) const; /* minSizeMeasures must contains the optimistic values for the maximized sizes and, if the area is maximized for that measure too (back of the vector) */
@@ -37,15 +37,14 @@ class IndistinctSkyPatterns
   vector<unsigned int> minNbOfNonSelfLoopsTuplesInANonDominatedPattern(const vector<unsigned int>& minimalPatternSizes, const vector<unsigned int>& maximalPatternSizes, const unsigned int areaOfMinimalPattern) const; /* some size or area must be to be maximized */
 
   static const bool noSizeOrAreaMaximized();
-  static void setParametersToComputePresentAndPotentialIrrelevancyThresholds(const vector<unsigned int>& maximizedSizeDimensionIds, const bool isAreaMaximized);
 #endif
   static void setParametersToComputePresentAndPotentialIrrelevancyThresholds(const unsigned int firstSymmetricAttributeId, const unsigned int lastSymmetricAttributeId);
+  static void setParametersToComputePresentAndPotentialIrrelevancyThresholds(const vector<unsigned int>& maximizedSizeDimensionIds, const bool isAreaMaximized);
   static const unsigned int nbOfNonSelfLoopTuplesInHyperplaneOfPattern(const vector<unsigned int>& sizes, const unsigned int hyperplaneDimensionId, const unsigned int nbOfSymmetricElements);
   /* static const unsigned int nbOfNonSelfLoopTuplesInPattern(const vector<unsigned int>& sizes, const unsigned int nbOfSymmetricElements); */
 
  protected:
   vector<vector<vector<unsigned int>>> patterns;
-  vector<float> minimizedMeasures;
   vector<float> maximizedMeasures;
   unsigned int area;
 

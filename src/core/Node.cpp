@@ -61,7 +61,7 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator
   membershipSum = static_cast<double>(area) * maxMembershipMinusShift;
   g = membershipSum * membershipSum / area;
   // TODO: Compute gEstimation
-  gEstimation = computeGEstimation(child1It, child2It);
+  gEstimation = computeGEstimation(nSet, child1It, child2It);
 }
 
 const vector<unsigned int>& Node::dimension(const unsigned int dimensionId) const
@@ -119,25 +119,19 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
   (*child2It)->parents.insert(candidate);
 }
 
-double Node::computeGEstimation(const list<Node*>::iterator child1It, const list<Node*>::iterator child2It)
+double Node::computeGEstimation(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It)
 {
-  double lambdaMax;
-  double lambdaMin;
   double estimative;
+  double lambdaMax = (*child1It)->membershipSum - ((*child1It)->area * maxMembershipMinusShift);
+  double lambdaMin = (*child2It)->membershipSum - ((*child2It)->area * maxMembershipMinusShift);
   int nbOfTuplesInIntersection = 0;
 
-  if((*child1It)->membershipSum > (*child2It)->membershipSum)
+  if(lambdaMin > lambdaMax)
     {
-      lambdaMax = (*child1It)->membershipSum - ((*child1It)->area * maxMembershipMinusShift);
-      lambdaMin = (*child2It)->membershipSum - ((*child2It)->area * maxMembershipMinusShift);
+      double aux = lambdaMax;
+      lambdaMax = lambdaMin;
+      lambdaMin = aux;
     }
-  else
-    {
-      lambdaMax = (*child2It)->membershipSum - ((*child2It)->area * maxMembershipMinusShift);
-      lambdaMin = (*child1It)->membershipSum - ((*child1It)->area * maxMembershipMinusShift);
-    }
-
-  estimative =
 }
 
 void Node::unlinkGeneratingPairsInvolving(const Node* child)
@@ -212,7 +206,8 @@ const unsigned int Node::countLeaves() const
     }
   return nbOfCoveredLeaves;
 }
-
+/*
+ * Should it be countLeaves with G above?
 const unsigned int Node::countLeavesWithRelevanceAbove(const int ancestorRelevance) const
 {
   if (children.empty())
@@ -233,7 +228,11 @@ const unsigned int Node::countLeavesWithRelevanceAbove(const int ancestorRelevan
     }
   return nbOfCoveredLeaves;
 }
-
+*/
+/*
+ * setG (although G is never recalculated as relevance)
+ * So this method should be deleted (?)
+ *
 const unsigned int Node::setRelevance(const int distanceToParent)
 {
   relevance = distanceToParent - intrinsicDistance;
@@ -244,18 +243,19 @@ const unsigned int Node::setRelevance(const int distanceToParent)
     }
   return nbOfLeaves;
 }
+*/
 
-void Node::deleteIrrelevantOffspring(const int ancestorRelevance, vector<list<Node*>::iterator>& ancestorChildren)
+void Node::deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::iterator>& ancestorChildren)
 {
   for (list<Node*>::iterator childIt : children)
     {
-      if ((*childIt)->relevance > ancestorRelevance)
+      if ((*childIt)->g > ancestorG)
 	{
 	  ancestorChildren.push_back(childIt);
 	}
       else
 	{
-	  (*childIt)->deleteIrrelevantOffspring(ancestorRelevance, ancestorChildren);
+	  (*childIt)->deleteOffspringWithSmallerG(ancestorG, ancestorChildren);
 	  delete *childIt;
 	  dendrogram.erase(childIt);
 	}
@@ -267,14 +267,14 @@ vector<list<Node*>::iterator> Node::getParentChildren()
   bool isIrrelevant = true;
   for (vector<list<Node*>::iterator>::reverse_iterator childItIt = children.rbegin(); childItIt != children.rend(); )
     {
-      if ((**childItIt)->relevance > relevance)
+      if ((**childItIt)->g > g)
 	{
 	  ++childItIt;
 	}
       else
 	{
 	  isIrrelevant = false;
-	  (**childItIt)->deleteIrrelevantOffspring(relevance, children);
+	  (**childItIt)->deleteOffspringWithSmallerG(g, children);
 	  delete **childItIt;
 	  dendrogram.erase(*childItIt);
 	  *childItIt++ = children.back();
@@ -335,6 +335,12 @@ void Node::insertInDendrogramFrontier()
 	    }
 	}
     }
+
+ /*
+  * This must be deleted.
+  * There's no distance to calculate anymore.
+  * But there is G measure to be considered on dedrogram frontier
+  *
   // Compute the distance to the covered child with the highest intrinsic distance
   unsigned int maximalChildIntrinsicDistance = 0;
   for (const list<Node*>::iterator coveredChildIt : coveredChildren)
@@ -368,6 +374,7 @@ void Node::insertInDendrogramFrontier()
 	}
       dendrogramFrontier.erase(coveredChildIt);
     }
+    */
 }
 
 const bool Node::lessPromising(const Node* node1, const Node* node2)
@@ -457,7 +464,8 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     	  // candidate->g is partial
     	  candidates.erase(candidates.begin());
 	  // TODO: compute membershipThreshold from highestG
-    	  const bool isBetter = data->isBetterNSet(membershipThreshold, candidate->pattern, candidate->nextTuple candidate->membershipSum);
+    	  double membershipThreshold = 0;
+    	  const bool isBetter = data->isBetterNSet(membershipThreshold, candidate->pattern, candidate->nextTuple, candidate->membershipSum);
     	  candidate->g = membershipSum * membershipSum / area;
     	  if (isBetter)
     	    {

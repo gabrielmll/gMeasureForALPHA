@@ -59,9 +59,9 @@ class Node
   const unsigned int countLeavesWithRelevanceAbove(const int ancestorRelevance) const;
 
   void unlinkGeneratingPairsInvolving(const Node* child);
-  double computeGEstimation(const list<Node*>::iterator child1It, const list<Node*>::iterator child2It);
+  double computeGEstimation(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It);
   const unsigned int setRelevance(const int distanceToParent);
-  void deleteIrrelevantOffspring(const int ancestorRelevance, vector<list<Node*>::iterator>& ancestorChildren);
+  void deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::iterator>& ancestorChildren)
   vector<list<Node*>::iterator> getParentChildren();
   void insertInDendrogramFrontier();
 

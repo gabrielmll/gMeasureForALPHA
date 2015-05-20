@@ -109,7 +109,7 @@ const unsigned int NoNoiseTube::setSymmetricAbsentAfterAbsentValueMetAndAbsentUs
   return 0;
 }
 
-const unsigned int NoNoiseTube::countNoise(const vector<vector<unsigned int>>::iterator dimensionIt) const
+const unsigned int NoNoiseTube::countNoise(const vector<vector<unsigned int>>::const_iterator dimensionIt) const
 {
   return 0;
 }

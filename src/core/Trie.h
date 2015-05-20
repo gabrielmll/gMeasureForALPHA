@@ -56,7 +56,7 @@ class Trie: public AbstractData
   const unsigned int setSymmetricAbsentAfterAbsentValueMetAndAbsentUsed(const vector<Attribute*>::iterator attributeIt, const vector<vector<unsigned int>>::iterator absentValueIntersectionIt) const;
 
   const double countNoise(const vector<vector<unsigned int>>& nSet) const;
-  const unsigned int countNoise(const vector<vector<Element>>::iterator dimensionIt) const;
+  const unsigned int countNoise(const vector<vector<unsigned int>>::const_iterator dimensionIt) const;
   const bool isBetterNSet(const double membershipThreshold, const vector<vector<unsigned int>>& nSet, vector<vector<unsigned int>::const_iterator>& tuple, double& membershipSum) const;
   const bool decreaseMembershipUpToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const;
 

@@ -291,7 +291,7 @@ void SparseCrispTube::absentFixAbsentValuesAfterAbsentValuesMet(Attribute& curre
     }
 }
 
-const unsigned int SparseCrispTube::countNoise(const vector<vector<unsigned int>>::iterator dimensionIt) const
+const unsigned int SparseCrispTube::countNoise(const vector<vector<unsigned int>>::const_iterator dimensionIt) const
 {
   unsigned int noise = 0;
   for (const unsigned int id : *dimensionIt)

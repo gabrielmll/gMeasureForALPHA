@@ -59,7 +59,8 @@ class Node
   const unsigned int countLeavesWithRelevanceAbove(const int ancestorRelevance) const;
 
   void unlinkGeneratingPairsInvolving(const Node* child);
-<  const unsigned int setRelevance(const int distanceToParent);
+  double computeGEstimation(const list<Node*>::iterator child1It, const list<Node*>::iterator child2It);
+  const unsigned int setRelevance(const int distanceToParent);
   void deleteIrrelevantOffspring(const int ancestorRelevance, vector<list<Node*>::iterator>& ancestorChildren);
   vector<list<Node*>::iterator> getParentChildren();
   void insertInDendrogramFrontier();
@@ -68,6 +69,7 @@ class Node
   static const bool morePromising(const Node* node1, const Node* node2);
   static const bool moreRelevant(const Node* node1, const Node* node2);
   static void constructCandidate(const list<Node*>::iterator otherChildIt, const list<Node*>::iterator thisIt);
+  vector<unsigned int> idVectorUnion(const vector<unsigned int>& v1,const vector<unsigned int>& v2);
 };
 
 #endif	/*NODE_H*/

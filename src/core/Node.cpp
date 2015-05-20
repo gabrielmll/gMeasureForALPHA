@@ -58,9 +58,10 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator
       area *= patternDimension.size();
       nextTuple.push_back(patternDimension.begin());
     }
-  membershipSum = static<double>(area) * maxMembershipMinusShift;
+  membershipSum = static_cast<double>(area) * maxMembershipMinusShift;
   g = membershipSum * membershipSum / area;
   // TODO: Compute gEstimation
+  gEstimation = computeGEstimation(child1It, child2It);
 }
 
 const vector<unsigned int>& Node::dimension(const unsigned int dimensionId) const
@@ -94,10 +95,10 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
 {
   vector<vector<unsigned int>> unionNSet;
   unionNSet.reserve((*child1It)->pattern.size());
-  vector<vector<Element>>::const_iterator otherPatternIt = (*child2It)->pattern.begin();
-  for (const vector<Element>& patternDimension : (*child1It)->pattern)
+  vector<vector<unsigned int>>::const_iterator otherPatternIt = (*child2It)->pattern.begin();
+  for (const vector<unsigned int>& patternDimension : (*child1It)->pattern)
     {
-      unionNSet.push_back(Element::idVectorUnion(*otherPatternIt, patternDimension));
+      unionNSet.push_back(idVectorUnion(*otherPatternIt, patternDimension));
       ++otherPatternIt;
     }
   Node* candidate;
@@ -116,6 +117,27 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
     }
   (*child1It)->parents.insert(candidate);
   (*child2It)->parents.insert(candidate);
+}
+
+double Node::computeGEstimation(const list<Node*>::iterator child1It, const list<Node*>::iterator child2It)
+{
+  double lambdaMax;
+  double lambdaMin;
+  double estimative;
+  int nbOfTuplesInIntersection = 0;
+
+  if((*child1It)->membershipSum > (*child2It)->membershipSum)
+    {
+      lambdaMax = (*child1It)->membershipSum - ((*child1It)->area * maxMembershipMinusShift);
+      lambdaMin = (*child2It)->membershipSum - ((*child2It)->area * maxMembershipMinusShift);
+    }
+  else
+    {
+      lambdaMax = (*child2It)->membershipSum - ((*child2It)->area * maxMembershipMinusShift);
+      lambdaMin = (*child1It)->membershipSum - ((*child1It)->area * maxMembershipMinusShift);
+    }
+
+  estimative =
 }
 
 void Node::unlinkGeneratingPairsInvolving(const Node* child)
@@ -460,4 +482,63 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
   // Order the nodes, more relevant first
   dendrogram.sort(moreRelevant);
   return pair<list<Node*>::const_iterator, list<Node*>::const_iterator>(dendrogram.begin(), dendrogram.end());
+}
+
+vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const vector<unsigned int>& v2)
+{
+  vector<unsigned int> unionVector;
+  unionVector.reserve(v1.size() + v2.size());
+  vector<unsigned int>::const_iterator v1It = v1.begin();
+  vector<unsigned int>::const_iterator v2It = v2.begin();
+  while (true)
+    {
+      if (*v1It < *v2It)
+	{
+	  unionVector.push_back(*v1It);
+	  if (++v1It == v1.end())
+	    {
+	      for (; v2It != v2.end(); ++v2It)
+		{
+		  unionVector.push_back(*v2It);
+		}
+	      return unionVector;
+	    }
+	}
+      else
+	{
+	  if (*v1It == *v2It)
+	    {
+	      if (++v1It == v1.end())
+		{
+		  for (; v2It != v2.end(); ++v2It)
+		    {
+		      unionVector.push_back(*v2It);
+		    }
+		  return unionVector;
+		}
+	      unionVector.push_back(*v2It);
+	      if (++v2It == v2.end())
+		{
+		  for (; v1It != v1.end(); ++v1It)
+		    {
+		      unionVector.push_back(*v1It);
+		    }
+		  return unionVector;
+		}
+	    }
+	  else
+	    {
+	      unionVector.push_back(*v2It);
+	      if (++v2It == v2.end())
+		{
+		  for (; v1It != v1.end(); ++v1It)
+		    {
+		      unionVector.push_back(*v1It);
+		    }
+		  return unionVector;
+		}
+	    }
+	}
+    }
+  return unionVector;
 }

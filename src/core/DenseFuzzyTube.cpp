@@ -265,7 +265,7 @@ const bool DenseFuzzyTube::decreaseMembershipDownToThreshold(const double member
 {
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      membershipSum -=tube[(*tupleIt)->getId()];
+      membershipSum -=tube[**tupleIt];
       if (membershipSum < membershipThreshold)
 	{
 	  ++*tupleIt;

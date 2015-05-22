@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -29,7 +29,7 @@ MinGroupCoverLeverage::MinGroupCoverLeverage(const unsigned int numeratorGroupId
     }
   thresholds[numeratorGroupId][denominatorGroupId] = threshold;
   const unsigned int denominatorGroupSize = maxCoverOfGroup(denominatorGroupId);
-  weights[numeratorGroupId][denominatorGroupId] = static_cast<float>(maxCoverOfGroup(numeratorGroupId)) / static_cast<float>(denominatorGroupSize * denominatorGroupSize);
+  weights[numeratorGroupId][denominatorGroupId] = static_cast<float>(maxCoverOfGroup(numeratorGroupId)) / (denominatorGroupSize * denominatorGroupSize);
 }
 
 MinGroupCoverLeverage* MinGroupCoverLeverage::clone() const
@@ -37,7 +37,7 @@ MinGroupCoverLeverage* MinGroupCoverLeverage::clone() const
   return new MinGroupCoverLeverage(*this);
 }
 
-const bool MinGroupCoverLeverage::violationAfterAdding() const
+const bool MinGroupCoverLeverage::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -48,7 +48,7 @@ const bool MinGroupCoverLeverage::violationAfterAdding() const
   return optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId];
 }
 
-const bool MinGroupCoverLeverage::violationAfterRemoving() const
+const bool MinGroupCoverLeverage::violationAfterMaxCoversDecreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -62,9 +62,10 @@ const bool MinGroupCoverLeverage::violationAfterRemoving() const
 const float MinGroupCoverLeverage::optimisticValue() const
 {
   const unsigned int maxCoverOfNumeratorGroup = maxCoverOfGroup(numeratorGroupId);
+  const unsigned int minCoverOfDenominatorGroup = minCoverOfGroup(denominatorGroupId);
   if (maxCoverOfNumeratorGroup == 0)
     {
       return -numeric_limits<float>::infinity();
     }
-  return static_cast<float>(maxCoverOfNumeratorGroup) / static_cast<float>(minCoverOfGroup(numeratorGroupId)) - weights[numeratorGroupId][denominatorGroupId] * static_cast<float>(minCoverOfGroup(denominatorGroupId));
+  return static_cast<float>(maxCoverOfNumeratorGroup) / minCoverOfDenominatorGroup - weights[numeratorGroupId][denominatorGroupId] * minCoverOfDenominatorGroup;
 }

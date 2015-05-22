@@ -734,6 +734,13 @@ vector<Value*>::const_iterator Attribute::absentEnd() const
 }
 #endif
 
+#ifdef DEBUG_HA
+string Attribute::printLabelsById(unsigned int v1, unsigned int v2)
+{
+  return labelsVector[v1][v2];
+}
+#endif
+
 const bool Attribute::lessNoisy(const Value* value, const Value* otherValue)
 {
   return *value < *otherValue;
@@ -743,3 +750,4 @@ const bool Attribute::lessAppealingIrrelevant(const Attribute* attribute, const 
 {
   return (attribute->absentIndex - attribute->irrelevantIndex) * otherAttribute->values.size() < (otherAttribute->absentIndex - otherAttribute->irrelevantIndex) * attribute->values.size();
 }
+

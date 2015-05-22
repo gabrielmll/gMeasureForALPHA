@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -40,7 +40,7 @@ MinGroupCoverYulesY* MinGroupCoverYulesY::clone() const
   return new MinGroupCoverYulesY(*this);
 }
 
-const bool MinGroupCoverYulesY::violationAfterAdding() const
+const bool MinGroupCoverYulesY::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -51,7 +51,7 @@ const bool MinGroupCoverYulesY::violationAfterAdding() const
   return optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId];
 }
 
-const bool MinGroupCoverYulesY::violationAfterRemoving() const
+const bool MinGroupCoverYulesY::violationAfterMaxCoversDecreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -69,13 +69,13 @@ const float MinGroupCoverYulesY::optimisticValue() const
     {
       return -1;
     }
-  const float tmp = sqrt(static_cast<float>(minCoverOfGroup(denominatorGroupId) * (nbOfElementsInGroups[numeratorGroupId] - maxCoverOfNumeratorGroup)));
+  const float tmp = sqrt(minCoverOfGroup(denominatorGroupId) * (nbOfElementsInGroups[numeratorGroupId] - maxCoverOfNumeratorGroup));
   const unsigned int nbOfElementsInBothGroups = nbOfElementsInGroups[numeratorGroupId] + nbOfElementsInGroups[denominatorGroupId];
   const unsigned int minCoverOfNumeratorGroup = minCoverOfGroup(numeratorGroupId);
-  const float denominator = sqrt(static_cast<float>(minCoverOfNumeratorGroup * (nbOfElementsInBothGroups - maxCoverOfNumeratorGroup))) + tmp;
+  const float denominator = sqrt(minCoverOfNumeratorGroup * (nbOfElementsInBothGroups - maxCoverOfNumeratorGroup)) + tmp;
   if (denominator == 0)
     {
       return 1;
     }
-  return (sqrt(static_cast<float>(maxCoverOfNumeratorGroup * (nbOfElementsInBothGroups - minCoverOfNumeratorGroup))) - tmp) / denominator;
+  return (sqrt(maxCoverOfNumeratorGroup * (nbOfElementsInBothGroups - minCoverOfNumeratorGroup)) - tmp) / denominator;
 }

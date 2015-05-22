@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -19,7 +19,8 @@ class MinGroupCover: public GroupMeasure
   MinGroupCover(const unsigned int groupId, const unsigned int threshold);
   MinGroupCover* clone() const;
 
-  const bool violationAfterRemoving() const;
+  const bool monotone() const;
+  const bool violationAfterMaxCoversDecreased() const;
   const float optimisticValue() const;
 
  protected:

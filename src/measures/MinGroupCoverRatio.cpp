@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -32,26 +32,26 @@ MinGroupCoverRatio* MinGroupCoverRatio::clone() const
   return new MinGroupCoverRatio(*this);
 }
 
-const bool MinGroupCoverRatio::violationAfterAdding() const
+const bool MinGroupCoverRatio::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
-  if (static_cast<float>(maxCoverOfGroup(numeratorGroupId)) < static_cast<float>(minCoverOfGroup(denominatorGroupId)) * thresholds[numeratorGroupId][denominatorGroupId])
+  if (maxCoverOfGroup(numeratorGroupId) < thresholds[numeratorGroupId][denominatorGroupId] * minCoverOfGroup(denominatorGroupId))
     {
       cout << thresholds[numeratorGroupId][denominatorGroupId] << "-minimal cover ratio between group " << numeratorGroupId << " and group " << denominatorGroupId << " cannot be satisfied -> Prune!" << endl;
     }
 #endif
-  return static_cast<float>(maxCoverOfGroup(numeratorGroupId)) < static_cast<float>(minCoverOfGroup(denominatorGroupId)) * thresholds[numeratorGroupId][denominatorGroupId];
+  return maxCoverOfGroup(numeratorGroupId) < thresholds[numeratorGroupId][denominatorGroupId] * minCoverOfGroup(denominatorGroupId);
 }
 
-const bool MinGroupCoverRatio::violationAfterRemoving() const
+const bool MinGroupCoverRatio::violationAfterMaxCoversDecreased() const
 {
 #ifdef DEBUG
-  if (static_cast<float>(maxCoverOfGroup(numeratorGroupId)) < static_cast<float>(minCoverOfGroup(denominatorGroupId)) * thresholds[numeratorGroupId][denominatorGroupId])
+  if (maxCoverOfGroup(numeratorGroupId) < thresholds[numeratorGroupId][denominatorGroupId] * minCoverOfGroup(denominatorGroupId))
     {
       cout << thresholds[numeratorGroupId][denominatorGroupId] << "-minimal cover ratio between group " << numeratorGroupId << " and group " << denominatorGroupId << " cannot be satisfied -> Prune!" << endl;
     }
 #endif
-  return static_cast<float>(maxCoverOfGroup(numeratorGroupId)) < static_cast<float>(minCoverOfGroup(denominatorGroupId)) * thresholds[numeratorGroupId][denominatorGroupId];
+  return maxCoverOfGroup(numeratorGroupId) < thresholds[numeratorGroupId][denominatorGroupId] * minCoverOfGroup(denominatorGroupId);
 }
 
 const float MinGroupCoverRatio::optimisticValue() const
@@ -61,5 +61,5 @@ const float MinGroupCoverRatio::optimisticValue() const
     {
       return 0;
     }
-  return static_cast<float>(numerator) / static_cast<float>(minCoverOfGroup(denominatorGroupId));
+  return static_cast<float>(numerator) / minCoverOfGroup(denominatorGroupId);
 }

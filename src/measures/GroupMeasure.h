@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -19,11 +19,11 @@ class GroupMeasure: public Measure
  public:
   GroupMeasure();
   GroupMeasure(const GroupMeasure& otherGroupMeasure);
-  GroupMeasure(const GroupMeasure&& otherGroupMeasure);
+  GroupMeasure(GroupMeasure&& otherGroupMeasure);
   virtual ~GroupMeasure();
 
   GroupMeasure& operator=(const GroupMeasure& otherGroupMeasure);
-  GroupMeasure& operator=(const GroupMeasure&& otherGroupMeasure);
+  GroupMeasure& operator=(GroupMeasure&& otherGroupMeasure);
 
   static void initGroups(const vector<string>& groupFileNames, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, const vector<unsigned int>& cardinalities, const vector<unordered_map<string, unsigned int>>& labels2Ids, const vector<unsigned int>& dimensionOrder);
   static void allMeasuresSet(); /* must be called after the construction of all group measures in (SkyPattern)Tree::initMeasures */
@@ -32,17 +32,15 @@ class GroupMeasure: public Measure
 
   const bool violationAfterAdding(const unsigned int dimensionIdOfElementsSetPresent, const vector<unsigned int>& elementsSetPresent);
   const bool violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent);
-  virtual const bool violationAfterAdding() const;
-  virtual const bool violationAfterRemoving() const;
 
  protected:
-  static unsigned int measureId;
-  static unsigned int nbOfMeasures;
+  static vector<GroupMeasure*> firstMeasures;
   static vector<GroupCovers*> groupCovers;
   static bool isSomeMeasureMonotone;
   static bool isSomeMeasureAntiMonotone;
 
-  void incrementMeasureId() const;
+  virtual const bool violationAfterMinCoversIncreased() const;
+  virtual const bool violationAfterMaxCoversDecreased() const;
 };
 
 #endif /*GROUP_MEASURE_H*/

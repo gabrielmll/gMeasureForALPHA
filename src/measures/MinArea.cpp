@@ -22,6 +22,11 @@ MinArea* MinArea::clone() const
   return new MinArea(*this);
 }
 
+const bool MinArea::monotone() const
+{
+  return true;
+}
+
 const bool MinArea::violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent)
 {
   minArea = 1;
@@ -45,5 +50,5 @@ const bool MinArea::violationAfterRemoving(const unsigned int dimensionIdOfEleme
 
 const float MinArea::optimisticValue() const
 {
-  return static_cast<float>(minArea);
+  return minArea;
 }

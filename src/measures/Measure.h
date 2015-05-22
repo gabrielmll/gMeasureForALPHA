@@ -27,9 +27,10 @@ class Measure
   virtual ~Measure();
   virtual Measure* clone() const = 0;
 
+  virtual const bool monotone() const;
   virtual const bool violationAfterAdding(const unsigned int dimensionIdOfElementsSetPresent, const vector<unsigned int>& elementsSetPresent);
   virtual const bool violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent);
-  virtual const float optimisticValue() const;
+  virtual const float optimisticValue() const = 0;
 
 #ifdef DEBUG
   static void setInternal2ExternalAttributeOrder(const vector<unsigned int>& internal2ExternalAttributeOrder);

@@ -949,7 +949,7 @@ const bool Trie::isBetterNSet(const double membershipThreshold, const vector<vec
   return true;
 }
 
-const bool Trie::decreaseMembershipUpToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
+const bool Trie::decreaseMembershipDownToThreshold(const double membershipThreshold, const vector<vector<unsigned int>>::const_iterator dimensionIt, const vector<vector<unsigned int>::const_iterator>::iterator tupleIt, double& membershipSum) const
 {
   const vector<vector<unsigned int>>::const_iterator nextDimensionIt = dimensionIt + 1;
   const vector<vector<unsigned int>::const_iterator>::iterator nextTupleIt = tupleIt + 1;

@@ -13,7 +13,7 @@
 double Node::maxMembershipMinusShift;
 unsigned int Node::maximalNbOfClosedNSets;
 bool Node::isBelowMaximalNbOfClosedNSets = true;
-unsigned int Node::smallestG = -numeric_limits<double>::infinity();
+double Node::smallestG = -numeric_limits<double>::infinity();
 
 multiset<Node*, const bool(*)(const Node*, const Node*)> Node::leaves(lessPromising);
 list<Node*> Node::dendrogram;
@@ -32,21 +32,28 @@ Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), a
       area *= pattern.back().size();
       nextTuple.push_back(pattern.back().begin());
     }
-  membershipSum = static_cast<double>(area) - attributes.front()->totalPresentAndPotentialNoise();
+#ifdef DEBUG_HA
+  cout << "\nmaxMembershipMinusShift :" << maxMembershipMinusShift;
+  cout << "\ntotalPresentAndPotentialNoise: " << attributes.front()->totalPresentAndPotentialNoise();
+#endif
+  membershipSum = maxMembershipMinusShift * area - attributes.front()->totalPresentAndPotentialNoise();
   g = membershipSum * membershipSum / area;
+
+#ifdef DEBUG_HA
+  printANode(this);
+#endif
 }
 
 Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), children()
 {
-  pattern.reserve(nSet.size());
   nextTuple.reserve(nSet.size());
-  for (const vector<unsigned int>& patternDimension : pattern)
+  for (vector<unsigned int>& patternDimension : pattern)
     {
       sort(patternDimension.begin(), patternDimension.end());
       area *= patternDimension.size();
       nextTuple.push_back(patternDimension.begin());
     }
-  membershipSum = static_cast<double>(area) - data->countNoise(pattern);
+  membershipSum = maxMembershipMinusShift * area - data->countNoise(pattern);
   g = membershipSum * membershipSum / area;
 }
 
@@ -58,10 +65,9 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator
       area *= patternDimension.size();
       nextTuple.push_back(patternDimension.begin());
     }
-  membershipSum = static_cast<double>(area) * maxMembershipMinusShift;
+  membershipSum = maxMembershipMinusShift * area;
   g = membershipSum * membershipSum / area;
-  // TODO: Compute gEstimation
-  gEstimation = computeGEstimation(nSet, child1It, child2It);
+  gEstimation = gEstimationFromLastTwoChildren();
 }
 
 const vector<unsigned int>& Node::dimension(const unsigned int dimensionId) const
@@ -72,23 +78,6 @@ const vector<unsigned int>& Node::dimension(const unsigned int dimensionId) cons
 const unsigned int Node::getArea() const
 {
   return area;
-}
-
-void Node::eraseNSet() const
-{
-  vector<vector<unsigned int>> nSet;
-  nSet.reserve(pattern.size());
-  for (const vector<Element>& patternDimension : pattern)
-    {
-      vector<unsigned int> nSetDimension;
-      nSetDimension.reserve(patternDimension.size());
-      for (const Element& element : patternDimension)
-	{
-	  nSetDimension.push_back(element.getId());
-	}
-      nSet.push_back(nSetDimension);
-    }
-  candidateNSets.erase(nSet);
 }
 
 void Node::constructCandidate(const list<Node*>::iterator child1It, const list<Node*>::iterator child2It)
@@ -114,24 +103,16 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
       candidate = candidateNSetIt->second;
       candidate->children.push_back(child1It);
       candidate->children.push_back(child2It);
+      const double newGEstimation = candidate->gEstimationFromLastTwoChildren();
+      if (newGEstimation > candidate->gEstimation)
+	{
+	  const set<Node*>::const_iterator hintIt = candidates.erase(candidates.find(candidate));
+	  candidate->gEstimation = newGEstimation;
+	  candidates.insert(hintIt, candidate);
+	}
     }
   (*child1It)->parents.insert(candidate);
   (*child2It)->parents.insert(candidate);
-}
-
-double Node::computeGEstimation(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It)
-{
-  double estimative;
-  double lambdaMax = (*child1It)->membershipSum - ((*child1It)->area * maxMembershipMinusShift);
-  double lambdaMin = (*child2It)->membershipSum - ((*child2It)->area * maxMembershipMinusShift);
-  int nbOfTuplesInIntersection = 0;
-
-  if(lambdaMin > lambdaMax)
-    {
-      double aux = lambdaMax;
-      lambdaMax = lambdaMin;
-      lambdaMin = aux;
-    }
 }
 
 void Node::unlinkGeneratingPairsInvolving(const Node* child)
@@ -191,6 +172,38 @@ void Node::unlinkGeneratingPairsInvolving(const Node* child)
     {
       otherChild->parents.erase(this);
     }
+}
+
+const double Node::gEstimationFromLastTwoChildren() const
+{
+  const Node& child1 = ***(children.end() - 2);
+  const Node& child2 = **children.back();
+  unsigned int nbOfTuplesInIntersection = 1;
+  vector<vector<unsigned int>>::const_iterator child1DimensionIt = child1.pattern.begin();
+  vector<vector<unsigned int>>::const_iterator child2DimensionIt = child2.pattern.begin();
+  for (const vector<unsigned int>& patternDimension : pattern)
+    {
+      nbOfTuplesInIntersection *= child1DimensionIt->size() + child2DimensionIt->size() - patternDimension.size();
+    }
+  const double child1Density = child1.membershipSum / child1.area;
+  const double child2Density = child2.membershipSum / child2.area;
+  if (child1Density < child2Density)
+    {
+      double membershipSumEstimation = child2.membershipSum;
+      const double estimatedSumAtIntersection = child2Density * nbOfTuplesInIntersection;
+      if (estimatedSumAtIntersection < child1.membershipSum)
+	{
+	  membershipSumEstimation += child1.membershipSum - estimatedSumAtIntersection;
+	}
+      return membershipSumEstimation * membershipSumEstimation / area;
+    }
+  double membershipSumEstimation = child1.membershipSum;
+  const double estimatedSumAtIntersection = child1Density * nbOfTuplesInIntersection;
+  if (estimatedSumAtIntersection < child2.membershipSum)
+    {
+      membershipSumEstimation += child2.membershipSum - estimatedSumAtIntersection;
+    }
+  return membershipSumEstimation * membershipSumEstimation / area;
 }
 
 const unsigned int Node::countLeaves() const
@@ -309,7 +322,7 @@ void Node::insertInDendrogramFrontier()
 	}
      }
   // Remove this n-set from candidateNSets
-  eraseNSet();
+  candidateNSets.erase(pattern);
   if (!children.empty())
     {
       // subsets of *this were found during candidate construction: they are at the odd positions of children (this at the even positions) and *this became a parent of *this
@@ -329,7 +342,7 @@ void Node::insertInDendrogramFrontier()
 	  parent->unlinkGeneratingPairsInvolving(*coveredChildIt);
 	  if (parent->children.empty())
 	    {
-	      parent->eraseNSet();
+	      candidateNSets.erase(parent->pattern);
 	      candidates.erase(parent);
 	      delete parent;
 	    }
@@ -400,9 +413,9 @@ const bool Node::moreRelevant(const Node* node1, const Node* node2)
   return node2->g < node1->g;
 }
 
-void Node::setMaxMembershipMinusShift(double maxMembershipMinusShiftParam)
+void Node::setSimilarityShift(double similarityShift)
 {
-  maxMembershipMinusShift = maxMembershipMinusShiftParam;
+  maxMembershipMinusShift = Attribute::noisePerUnit - similarityShift;
 }
 
 void Node::setMaximalNbOfClosedNSetsForAgglomeration(const unsigned int maximalNbOfClosedNSetsForAgglomeration)
@@ -453,6 +466,12 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
 	  constructCandidate(dendrogramFrontier.begin(), child2It);
 	}
     }
+
+#ifdef DEBUG_HA
+  printCadidates();
+#endif
+
+
   // Hierarchical agglomeration
   while (!candidates.empty())
     {
@@ -463,10 +482,8 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     	  Node* candidate = *candidates.begin();
     	  // candidate->g is partial
     	  candidates.erase(candidates.begin());
-	  // TODO: compute membershipThreshold from highestG
-    	  double membershipThreshold = 0;
-    	  const bool isBetter = data->isBetterNSet(membershipThreshold, candidate->pattern, candidate->nextTuple, candidate->membershipSum);
-    	  candidate->g = membershipSum * membershipSum / area;
+    	  const bool isBetter = data->isBetterNSet(sqrt(highestG * candidate->area), candidate->pattern, candidate->nextTuple, candidate->membershipSum);
+    	  candidate->g = candidate->membershipSum * candidate->membershipSum / candidate->area;
     	  if (isBetter)
     	    {
     	      highestG = candidate->g;
@@ -475,20 +492,33 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     	}
       Node* candidateToInsert = *candidates.begin();
       candidates.erase(candidates.begin());
+
+// insertInDendrogramFrontier seems to NOT be cleaning the children
       candidateToInsert->insertInDendrogramFrontier();
+
+      cerr << "\n\tend of while";
+      printCadidates();
+      cerr << "DendrogramFrontier: ";
+      printNodeList(dendrogramFrontier);
     }
-  Node* root = dendrogramFrontier.front();
-  root->setRelevance(0);
-  if (root->getParentChildren().empty())
-    {
-      dendrogram.push_back(root);
-    }
-  else
-    {
-      delete root;
-    }
+  // TODO: implement the second part of the selection of the relevant agglomerates
+  // Node* root = dendrogramFrontier.front();
+  // root->setRelevance(0);
+  // if (root->getParentChildren().empty())
+  //   {
+  //     dendrogram.push_back(root);
+  //   }
+  // else
+  //   {
+  //     delete root;
+  //   }
   // Order the nodes, more relevant first
   dendrogram.sort(moreRelevant);
+
+#ifdef DEBUG_HA
+  cout << "Dendrogram:\n";
+  printNodeList(dendrogram);
+#endif
   return pair<list<Node*>::const_iterator, list<Node*>::const_iterator>(dendrogram.begin(), dendrogram.end());
 }
 
@@ -550,3 +580,42 @@ vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const ve
     }
   return unionVector;
 }
+
+#ifdef DEBUG_HA
+void Node::printANode(Node* thisNode)
+{
+  // How to get this int from patternDimension?
+  int nbPatternDimension = 0;
+  cout << "\n";
+  for (vector<unsigned int> patternDimension : thisNode->pattern)
+    {
+      for (unsigned int id : patternDimension)
+	{
+	  cout << Attribute::printLabelsById(nbPatternDimension, id) + " ";
+	}
+      cout <<  " - ";
+      nbPatternDimension++;
+    }
+  cout << "\n\tarea: " << thisNode->area;
+  cout << "\n\tmemberShipSum: " << thisNode->membershipSum;
+  cout << "\n\tg: " << thisNode->g;
+  cout << "\n";
+}
+
+void Node::printCadidates()
+{
+  cout << "Candidates:\n";
+  for (Node* candidateIt : candidates)
+    {
+      printANode(candidateIt);
+    }
+}
+
+void Node::printNodeList(list<Node*> nodeList)
+{
+  for(Node* thisNode : nodeList)
+    {
+      printANode(thisNode);
+    }
+}
+#endif

@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -40,7 +40,7 @@ MinGroupCoverYulesQ* MinGroupCoverYulesQ::clone() const
   return new MinGroupCoverYulesQ(*this);
 }
 
-const bool MinGroupCoverYulesQ::violationAfterAdding() const
+const bool MinGroupCoverYulesQ::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -51,7 +51,7 @@ const bool MinGroupCoverYulesQ::violationAfterAdding() const
   return optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId];
 }
 
-const bool MinGroupCoverYulesQ::violationAfterRemoving() const
+const bool MinGroupCoverYulesQ::violationAfterMaxCoversDecreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -77,5 +77,5 @@ const float MinGroupCoverYulesQ::optimisticValue() const
     {
       return 1;
     }
-  return static_cast<float>(maxCoverOfNumeratorGroup * (nbOfElementsInBothGroups - minCoverOfNumeratorGroup) - tmp) / static_cast<float>(denominator);
+  return static_cast<float>(maxCoverOfNumeratorGroup * (nbOfElementsInBothGroups - minCoverOfNumeratorGroup) - tmp) / denominator;
 }

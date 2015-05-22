@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -27,7 +27,7 @@ MaxGroupCover* MaxGroupCover::clone() const
   return new MaxGroupCover(*this);
 }
 
-const bool MaxGroupCover::violationAfterAdding() const
+const bool MaxGroupCover::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
   if (minCoverOfGroup(groupId) > thresholds[groupId])
@@ -40,5 +40,5 @@ const bool MaxGroupCover::violationAfterAdding() const
 
 const float MaxGroupCover::optimisticValue() const
 {
-  return static_cast<float>(minCoverOfGroup(groupId));
+  return -minCoverOfGroup(groupId);
 }

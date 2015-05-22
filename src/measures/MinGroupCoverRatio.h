@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -19,8 +19,8 @@ class MinGroupCoverRatio: public GroupMeasure
   MinGroupCoverRatio(const unsigned int numeratorGroupId, const unsigned int denominatorGroupId, const float threshold);
   MinGroupCoverRatio* clone() const;
 
-  const bool violationAfterAdding() const;
-  const bool violationAfterRemoving() const;
+  const bool violationAfterMinCoversIncreased() const;
+  const bool violationAfterMaxCoversDecreased() const;
   const float optimisticValue() const;
 
  protected:

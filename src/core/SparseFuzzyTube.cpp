@@ -278,7 +278,7 @@ const bool SparseFuzzyTube::decreaseMembershipDownToThreshold(const double membe
 {
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      membershipSum -= noiseOnValue((*tupleIt)->getId());
+      membershipSum -= noiseOnValue(**tupleIt);
       if (membershipSum < membershipThreshold)
 	{
 	  ++*tupleIt;

@@ -13,7 +13,6 @@
 
 #include <ostream>
 
-#include "Element.h"
 #include "Attribute.h"
 
 class AbstractData

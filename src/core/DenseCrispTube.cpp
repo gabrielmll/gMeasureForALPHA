@@ -302,7 +302,7 @@ const bool DenseCrispTube::decreaseMembershipDownToThreshold(const double member
 {
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      if (tube[(*tupleIt)->getId()])
+      if (tube[**tupleIt])
 	{
 	  membershipSum -= Attribute::noisePerUnit;
 	  if (membershipSum < membershipThreshold)

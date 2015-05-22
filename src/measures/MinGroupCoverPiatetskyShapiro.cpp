@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -27,7 +27,7 @@ MinGroupCoverPiatetskyShapiro::MinGroupCoverPiatetskyShapiro(const unsigned int 
       thresholds[numeratorGroupId].resize(denominatorGroupId + 1);
       weights[numeratorGroupId].resize(denominatorGroupId + 1);
     }
-  const float denominatorGroupSize = static_cast<float>(maxCoverOfGroup(denominatorGroupId));
+  const float denominatorGroupSize = maxCoverOfGroup(denominatorGroupId);
   thresholds[numeratorGroupId][denominatorGroupId] = denominatorGroupSize * threshold;
   weights[numeratorGroupId][denominatorGroupId] = static_cast<float>(maxCoverOfGroup(numeratorGroupId)) / denominatorGroupSize;
 }
@@ -37,7 +37,7 @@ MinGroupCoverPiatetskyShapiro* MinGroupCoverPiatetskyShapiro::clone() const
   return new MinGroupCoverPiatetskyShapiro(*this);
 }
 
-const bool MinGroupCoverPiatetskyShapiro::violationAfterAdding() const
+const bool MinGroupCoverPiatetskyShapiro::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -48,7 +48,7 @@ const bool MinGroupCoverPiatetskyShapiro::violationAfterAdding() const
   return optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId];
 }
 
-const bool MinGroupCoverPiatetskyShapiro::violationAfterRemoving() const
+const bool MinGroupCoverPiatetskyShapiro::violationAfterMaxCoversDecreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -61,5 +61,5 @@ const bool MinGroupCoverPiatetskyShapiro::violationAfterRemoving() const
 
 const float MinGroupCoverPiatetskyShapiro::optimisticValue() const
 {
-  return static_cast<float>(maxCoverOfGroup(numeratorGroupId)) - weights[numeratorGroupId][denominatorGroupId] * static_cast<float>(minCoverOfGroup(denominatorGroupId));
+  return static_cast<float>(maxCoverOfGroup(numeratorGroupId)) - weights[numeratorGroupId][denominatorGroupId] * minCoverOfGroup(denominatorGroupId);
 }

@@ -45,5 +45,5 @@ const bool MaxArea::violationAfterAdding(const unsigned int dimensionIdOfElement
 
 const float MaxArea::optimisticValue() const
 {
-  return static_cast<float>(maxArea);
+  return -maxArea;
 }

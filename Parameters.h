@@ -1,4 +1,4 @@
-// Copyright 2007,2008,2009,2010 Loïc Cerf (magicbanana@gmail.com)
+// Copyright 2007,2008,2009,2010,2011,2012,2013,2014,2015 Loïc Cerf (magicbanana@gmail.com)
 
 // This file is part of multidupehack.
 
@@ -15,9 +15,15 @@
 /* OUTPUT turns on the output. This option may be disabled to evaluate the performance of multidupehack independently from the writing performances of the disk. */
 #define OUTPUT
 
-// Heuristics
-/* MIN_SIZE_ELEMENT_PRUNING turns on the heuristic that removes from the search space individual elements that would necessarily make a pattern violate some minimal size or area constraint */
+// Heuristics (defaults should be kept unless the gain brought by a heuristics is evaluated)
+/* PRE_PROCESS turns on the pre-process that aims to ignore elements that cannot be in any pattern given the minimal size constraints and the tolerance to noise. */
+#define PRE_PROCESS
+
+/* MIN_SIZE_ELEMENT_PRUNING turns on the heuristic that removes from the search space individual elements that would necessarily make a pattern violate some minimal size or area constraint. */
 #define MIN_SIZE_ELEMENT_PRUNING
+
+/* DETECT_NON_EXTENSION_ELEMENTS turns out the heuristic that removes the elements that are set absent by enumeration and cannot prevent the closedness of the patterns that will be recursively considered. */
+#define DETECT_NON_EXTENSION_ELEMENTS
 
 /* ENUMERATION_PROCESS selects the procedure that decides what is the dimension the next enumerated element is taken in: */
 /* 0: choose the dimension first, then choose the element w.r.t the noise it introduces in the potential part of the search space */
@@ -30,12 +36,13 @@
 
 /* DEBUG turns on the output (on the standard output) of information during the extraction of the closed error-tolerant n-sets. This option may be enabled by someone who wishes to precisely understand how this extraction is performed on a small data set. */
 /* #define DEBUG */
-
-/* DEBUG the Hierarchical Agglomeration */
 #define DEBUG_HA
 
 /* VERBOSE_DIM_CHOICE turns on the output (on the standard output) of information regarding the choice of the next dimension to be enumerated. Combined with DEBUG, this option may be enabled by someone who wishes to precisely understand how this choice is performed on a small data set. */
 /* #define VERBOSE_DIM_CHOICE */
+
+/* NUMERIC_PRECISION turns ou the output (on the standard output) of the maximal possible round-off error made when internally storing a membership degree. */
+/* #define NUMERIC_PRECISION */
 
 /* NB_OF_CLOSED_N_SETS turns on the output (on the standard output) of how many closed error-tolerant n-sets were selected during the extraction phase. */
 /* #define NB_OF_CLOSED_N_SETS */
@@ -51,16 +58,13 @@
 /* - the pre-processing time (to reduce the relation) */
 /* - the mining time */
 /* - the post-processing time (to agglomerate the closed error-tolerant n-sets) */
-/* - the time spent checking the closedness of the computed error-tolerant n-sets */
-/* - the time spent searching for irrelevant elements */
-/* - the time spent cleaning the set of absent elements */
 /* #define DETAILED_TIME */
 
-/* GNUPLOT modifies the way NB_OF_CLOSED_N_SETS, NB_OF_LEFT_NODES, TIME and DETAILED_TIME (in this order) format their outputs. Instead of being human readable, they are directly understandable by the famous gnuplot software. */
+/* GNUPLOT modifies the way NUMERIC_PRECISION, NB_OF_CLOSED_N_SETS, NB_OF_LEFT_NODES, TIME, DETAILED_TIME and MIN_SIZE_ELEMENT_PRUNING_TIME (in this order) format their outputs. Instead of being human readable, they are directly understandable by the famous gnuplot software. */
 /* #define GNUPLOT */
 
 // Assert
-/* ASSERT is used to check the correctness of the computed noise counters. At every iteration, it prints the counters associated with every remaining element and the same element computed from the data. Because floating points operations are not accurate, small differences are normal. */
+/* ASSERT is used to check the correctness of the computed noise counters. */
 /* #define ASSERT */
 
 #endif /*PARAMETERS_H_*/

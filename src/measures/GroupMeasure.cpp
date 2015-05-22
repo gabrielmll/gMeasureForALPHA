@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -10,70 +10,66 @@
 
 #include "GroupMeasure.h"
 
-unsigned int GroupMeasure::measureId = 0;
-unsigned int GroupMeasure::nbOfMeasures;
+vector<GroupMeasure*> GroupMeasure::firstMeasures;
 vector<GroupCovers*> GroupMeasure::groupCovers;
 bool GroupMeasure::isSomeMeasureMonotone = false;
 bool GroupMeasure::isSomeMeasureAntiMonotone = false;
 
 GroupMeasure::GroupMeasure()
 {
-  ++measureId;
+  if (firstMeasures.empty())
+    {
+      firstMeasures.push_back(this);
+    }
 }
 
 GroupMeasure::GroupMeasure(const GroupMeasure& otherGroupMeasure)
 {
-  if (measureId == 0)
+  if (&otherGroupMeasure == firstMeasures.back())
     {
+      firstMeasures.push_back(this);
       groupCovers.push_back(new GroupCovers(*(groupCovers.back())));
     }
-  incrementMeasureId();
 }
 
-GroupMeasure::GroupMeasure(const GroupMeasure&& otherGroupMeasure)
+GroupMeasure::GroupMeasure(GroupMeasure&& otherGroupMeasure)
 {
 }
 
 GroupMeasure::~GroupMeasure()
 {
-  if (measureId == 0)
+  if (!firstMeasures.empty() && firstMeasures.back() == this)
     {
-      delete groupCovers.back();
-      groupCovers.pop_back();
+      firstMeasures.pop_back();
+      if (!groupCovers.empty())
+	{
+	  delete groupCovers.back();
+	  groupCovers.pop_back();
+	}
     }
-  incrementMeasureId();
 }
 
 GroupMeasure& GroupMeasure::operator=(const GroupMeasure& otherGroupMeasure)
 {
-  if (measureId == 0)
+  if (&otherGroupMeasure == firstMeasures.back())
     {
       groupCovers.push_back(new GroupCovers(*(groupCovers.back())));
     }
-  incrementMeasureId();
   return *this;  
 }
 
-GroupMeasure& GroupMeasure::operator=(const GroupMeasure&& otherGroupMeasure)
+GroupMeasure& GroupMeasure::operator=(GroupMeasure&& otherGroupMeasure)
 {
   return *this;  
 }
 
 void GroupMeasure::initGroups(const vector<string>& groupFileNames, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, const vector<unsigned int>& cardinalities, const vector<unordered_map<string, unsigned int>>& labels2Ids, const vector<unsigned int>& dimensionOrder)
 {
-  unsigned int totalNbOfElements = 0;
-  for (const unsigned int cardinality : cardinalities)
-    {
-      totalNbOfElements += cardinality;
-    }
-  groupCovers.reserve(totalNbOfElements);
   groupCovers.push_back(new GroupCovers(groupFileNames, groupElementSeparator, groupDimensionElementsSeparator, cardinalities, labels2Ids, dimensionOrder));
 }
 
 void GroupMeasure::allMeasuresSet()
 {
-  nbOfMeasures = measureId;
-  measureId = 0;
   // If unnecessary, clear the maximal group covers (in this way, do not copy them at every copy of the group cover measures)
   if (!isSomeMeasureMonotone)
     {
@@ -100,16 +96,11 @@ const bool GroupMeasure::violationAfterAdding(const unsigned int dimensionIdOfEl
 {
   if (isSomeMeasureAntiMonotone)
     {
-      if (measureId == 0)
+      if (this == firstMeasures.back())
 	{
 	  groupCovers.back()->add(dimensionIdOfElementsSetPresent, elementsSetPresent);
 	}
-      if (violationAfterAdding())
-	{
-	  measureId = 0;
-	  return true;
-	}
-      incrementMeasureId();
+      return violationAfterMinCoversIncreased();
     }
   return false;
 }
@@ -118,34 +109,21 @@ const bool GroupMeasure::violationAfterRemoving(const unsigned int dimensionIdOf
 {
   if (isSomeMeasureMonotone)
     {
-      if (measureId == 0)
+      if (this == firstMeasures.back())
 	{
 	  groupCovers.back()->remove(dimensionIdOfElementsSetAbsent, elementsSetAbsent);
 	}
-      if (violationAfterRemoving())
-	{
-	  measureId = 0;
-	  return true;
-	}
-      incrementMeasureId();
+      return violationAfterMaxCoversDecreased();
     }
   return false;
 }
 
-const bool GroupMeasure::violationAfterAdding() const
+const bool GroupMeasure::violationAfterMinCoversIncreased() const
 {
   return false;
 }
 
-const bool GroupMeasure::violationAfterRemoving() const
+const bool GroupMeasure::violationAfterMaxCoversDecreased() const
 {
   return false;
-}
-
-void GroupMeasure::incrementMeasureId() const
-{
-  if (++measureId == nbOfMeasures)
-    {
-      measureId = 0;
-    }
 }

@@ -26,7 +26,7 @@ class Node
   const vector<unsigned int>& dimension(const unsigned int dimensionId) const;
   const unsigned int getArea() const;
 
-  static void setMaxMembershipMinusShift(double maxMembershipMinusShift);
+  static void setSimilarityShift(double similarityShift);
   static void setMaximalNbOfClosedNSetsForAgglomeration(const unsigned int maximalNbOfClosedNSetsForAgglomeration);
   static void insertOrDelete(Node* leaf);
   static pair<list<Node*>::const_iterator, list<Node*>::const_iterator> agglomerateAndSelect(const Trie* data);
@@ -54,14 +54,13 @@ class Node
 
   Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1, const list<Node*>::iterator child2);
 
-  void eraseNSet() const;
+  const double gEstimationFromLastTwoChildren() const;
   const unsigned int countLeaves() const;
   const unsigned int countLeavesWithRelevanceAbove(const int ancestorRelevance) const;
 
   void unlinkGeneratingPairsInvolving(const Node* child);
-  double computeGEstimation(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It);
-  const unsigned int setRelevance(const int distanceToParent);
-  void deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::iterator>& ancestorChildren)
+  /* const unsigned int setRelevance(const int distanceToParent); */
+  void deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::iterator>& ancestorChildren);
   vector<list<Node*>::iterator> getParentChildren();
   void insertInDendrogramFrontier();
 
@@ -69,7 +68,13 @@ class Node
   static const bool morePromising(const Node* node1, const Node* node2);
   static const bool moreRelevant(const Node* node1, const Node* node2);
   static void constructCandidate(const list<Node*>::iterator otherChildIt, const list<Node*>::iterator thisIt);
-  vector<unsigned int> idVectorUnion(const vector<unsigned int>& v1,const vector<unsigned int>& v2);
+  static vector<unsigned int> idVectorUnion(const vector<unsigned int>& v1, const vector<unsigned int>& v2);
+
+#ifdef DEBUG_HA
+  static void printANode(Node* thisNode);
+  static void printCadidates();
+  static void printNodeList(list<Node*> nodeList);
+#endif
 };
 
 #endif	/*NODE_H*/

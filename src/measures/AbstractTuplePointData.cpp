@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Matheus Marzano
+// Copyright 2014 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -8,29 +8,16 @@
 
 // You should have received a copy of the GNU General Public License along with multidupehack; if not, write to the Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
-#ifndef ELEMENT_H_
-#define ELEMENT_H_
+#include "AbstractTuplePointData.h"
 
-#include <vector>
-
-using namespace std;
-
-class Element
+AbstractTuplePointData::~AbstractTuplePointData()
 {
- public:
-  Element(const unsigned int id, const unsigned int noise = 0);
+}
 
-  const bool operator<(const Element& otherElement) const;
-  const unsigned int getId() const;
-  const unsigned int getNoise() const;
-  void addNoise(const unsigned int n);
-
-  static const bool smallerId(const Element& e1, const Element& e2);
-  static vector<unsigned int> idVectorUnion(const vector<Element>& v1,const vector<Element>& v2);
-
- protected:
-  unsigned int id;
-  unsigned int noise; 
-};
-
-#endif	/*ELEMENT_H*/
+void AbstractTuplePointData::translateToPositiveQuadrant()
+{
+  double minX = numeric_limits<double>::infinity();
+  double minY = numeric_limits<double>::infinity();
+  minCoordinates(minX, minY);
+  translate(-minX, -minY);
+}

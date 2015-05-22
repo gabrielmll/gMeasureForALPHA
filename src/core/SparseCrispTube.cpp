@@ -308,7 +308,7 @@ const bool SparseCrispTube::decreaseMembershipDownToThreshold(const double membe
 {
   for (; *tupleIt != dimensionIt->end(); ++*tupleIt)
     {
-      if (tube.find((*tupleIt)->getId()) == tube.end())
+      if (tube.find(**tupleIt) == tube.end())
 	{
 	  membershipSum -= Attribute::noisePerUnit;
 	  if (membershipSum < membershipThreshold)

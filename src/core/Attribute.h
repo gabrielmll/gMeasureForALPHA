@@ -16,7 +16,6 @@
 #include <boost/lexical_cast.hpp>
 
 #include "Value.h"
-#include "Element.h"
 
 #ifdef DEBUG
 #include <iostream>
@@ -124,6 +123,10 @@ class Attribute
   vector<Value*>::const_iterator irrelevantEnd() const;
   vector<Value*>::const_iterator absentBegin() const;
   vector<Value*>::const_iterator absentEnd() const;
+#endif
+
+#ifdef DEBUG_HA
+  static string printLabelsById(unsigned int v1, unsigned int v2);
 #endif
 
  protected:

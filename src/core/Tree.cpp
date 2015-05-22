@@ -565,8 +565,11 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const double 
       delete hyperplane;
       ++hyperplaneOldId;
     }
-  // Initialize maxMembershipMinusShift (1 - lambda_0 in Mirkin's paper)
-  Node::setMaxMembershipMinusShift(static_cast<double>(Attribute::noisePerUnit) - shiftMultiplier * (static_cast<double>(Attribute::noisePerUnit) - attributes.front()->averagePresentAndPotentialNoise() / largestNoise));
+  if (isAgglomeration)
+    {
+      // Compute Attribute::noisePerUnit * lambda_0 (see Mirkin's paper)
+      Node::setSimilarityShift(shiftMultiplier * (static_cast<double>(Attribute::noisePerUnit) - attributes.front()->averagePresentAndPotentialNoise() / largestNoise));
+    }
   // Initialize isClosedVector
   unsigned int nbOfUnclosedSymmetricAttribute = 0;
   vector<bool> isClosedVector(n, true);

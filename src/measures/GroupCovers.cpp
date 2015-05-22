@@ -72,25 +72,25 @@ GroupCovers::GroupCovers(const vector<string>& groupFileNames, const char* group
 		    {
 		      throw DataFormatException(fileName.c_str(), lineNb, ("dimension " + lexical_cast<string>(dimensionId) + " does not exist! (at most " + lexical_cast<string>(n - 1) + " expected)").c_str());
 		    }
-		  if (++dimensionElementsIt == dimensionElements.end())
+		  if (++dimensionElementsIt != dimensionElements.end())
 		    {
-		      throw DataFormatException(fileName.c_str(), lineNb, "no elements!");
-		    }
-		  dynamic_bitset<>& view = (*groupIt)[dimensionOrder[dimensionId]];
-		  const unordered_map<string, unsigned int>& labels2IdsView = labels2Ids[dimensionId];
-		  tokenizer<char_separator<char>> elements(*dimensionElementsIt, elementSeparator);
-		  for (const string& element : elements)
-		    {
-		      const unordered_map<string, unsigned int>::const_iterator labels2IdsViewIt = labels2IdsView.find(element);
-		      if (labels2IdsViewIt == labels2IdsView.end())
+		      const unsigned int internalDimensionId = dimensionOrder[dimensionId];
+		      dynamic_bitset<>& view = (*groupIt)[internalDimensionId];
+		      const unordered_map<string, unsigned int>& labels2IdsView = labels2Ids[internalDimensionId];
+		      tokenizer<char_separator<char>> elements(*dimensionElementsIt, elementSeparator);
+		      for (const string& element : elements)
 			{
-			  cerr << "Warning: ignoring " << element << " at line " << lineNb << " of " << fileName << " because it is absent from dimension " << dimensionId << " of the input data" << endl;
-			}
-		      else
-			{
-			  if (labels2IdsViewIt->second != numeric_limits<unsigned int>::max())
+			  const unordered_map<string, unsigned int>::const_iterator labels2IdsViewIt = labels2IdsView.find(element);
+			  if (labels2IdsViewIt == labels2IdsView.end())
 			    {
-			      view.set(labels2IdsViewIt->second);
+			      cerr << "Warning: ignoring " << element << " at line " << lineNb << " of " << fileName << " because it is absent from dimension " << dimensionId << " of the input data" << endl;
+			    }
+			  else
+			    {
+			      if (labels2IdsViewIt->second != numeric_limits<unsigned int>::max())
+				{
+				  view.set(labels2IdsViewIt->second);
+				}
 			    }
 			}
 		    }

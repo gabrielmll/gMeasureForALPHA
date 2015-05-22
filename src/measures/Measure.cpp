@@ -18,6 +18,11 @@ Measure::~Measure()
 {
 }
 
+const bool Measure::monotone() const
+{
+  return false;
+}
+
 const bool Measure::violationAfterAdding(const unsigned int dimensionIdOfElementsSetPresent, const vector<unsigned int>& elementsSetPresent)
 {
   return false;
@@ -26,11 +31,6 @@ const bool Measure::violationAfterAdding(const unsigned int dimensionIdOfElement
 const bool Measure::violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent)
 {
   return false;
-}
-
-const float Measure::optimisticValue() const
-{
-  return 0;
 }
 
 #ifdef DEBUG

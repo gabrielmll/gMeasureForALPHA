@@ -19,6 +19,7 @@ class MinSize: public Measure
   MinSize(const unsigned int dimensionId, const unsigned int minSize, const unsigned int threshold);
   MinSize* clone() const;
 
+  const bool monotone() const;
   const bool violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent);
   const float optimisticValue() const;
 

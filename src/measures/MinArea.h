@@ -19,6 +19,7 @@ class MinArea: public Measure
   MinArea(const vector<unsigned int>& nbOfElementsInDimensions, const unsigned int threshold);
   MinArea* clone() const;
 
+  const bool monotone() const;
   const bool violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent);
   const float optimisticValue() const;
 

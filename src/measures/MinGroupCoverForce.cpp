@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -26,7 +26,7 @@ MinGroupCoverForce::MinGroupCoverForce(const unsigned int numeratorGroupIdParam,
     }
   const unsigned int nbOfElementsInNumeratorGroup = maxCoverOfGroup(numeratorGroupId);
   const unsigned int nbOfElementsInDenominatorGroup = maxCoverOfGroup(denominatorGroupId);
-  thresholds[numeratorGroupId][denominatorGroupId] = threshold * static_cast<float>(nbOfElementsInNumeratorGroup) / static_cast<float>(nbOfElementsInDenominatorGroup * (nbOfElementsInNumeratorGroup + nbOfElementsInDenominatorGroup));
+  thresholds[numeratorGroupId][denominatorGroupId] = threshold * nbOfElementsInNumeratorGroup / (nbOfElementsInDenominatorGroup * (nbOfElementsInNumeratorGroup + nbOfElementsInDenominatorGroup));
 }
 
 MinGroupCoverForce* MinGroupCoverForce::clone() const
@@ -34,7 +34,7 @@ MinGroupCoverForce* MinGroupCoverForce::clone() const
   return new MinGroupCoverForce(*this);
 }
 
-const bool MinGroupCoverForce::violationAfterAdding() const
+const bool MinGroupCoverForce::violationAfterMinCoversIncreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -45,7 +45,7 @@ const bool MinGroupCoverForce::violationAfterAdding() const
   return optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId];
 }
 
-const bool MinGroupCoverForce::violationAfterRemoving() const
+const bool MinGroupCoverForce::violationAfterMaxCoversDecreased() const
 {
 #ifdef DEBUG
   if (optimisticValue() < thresholds[numeratorGroupId][denominatorGroupId])
@@ -64,5 +64,5 @@ const float MinGroupCoverForce::optimisticValue() const
       return 0;
     }
   const unsigned int minCoverOfDenominatorGroup = minCoverOfGroup(denominatorGroupId);
-  return static_cast<float>(maxCoverOfNumeratorGroup * maxCoverOfNumeratorGroup) / static_cast<float>((minCoverOfGroup(numeratorGroupId) + minCoverOfDenominatorGroup) * minCoverOfDenominatorGroup);
+  return static_cast<float>(maxCoverOfNumeratorGroup * maxCoverOfNumeratorGroup) / ((minCoverOfGroup(numeratorGroupId) + minCoverOfDenominatorGroup) * minCoverOfDenominatorGroup);
 }

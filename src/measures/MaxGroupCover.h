@@ -1,4 +1,4 @@
-// Copyright 2013,2014 Loïc Cerf (lcerf@dcc.ufmg.br)
+// Copyright 2013,2014,2015 Loïc Cerf (lcerf@dcc.ufmg.br)
 
 // This file is part of multidupehack.
 
@@ -20,7 +20,7 @@ class MaxGroupCover: public GroupMeasure
 
   MaxGroupCover* clone() const;
 
-  const bool violationAfterAdding() const;
+  const bool violationAfterMinCoversIncreased() const;
   const float optimisticValue() const;
 
  protected:

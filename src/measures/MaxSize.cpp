@@ -44,5 +44,5 @@ const bool MaxSize::violationAfterAdding(const unsigned int dimensionIdOfElement
 
 const float MaxSize::optimisticValue() const
 {
-  return static_cast<float>(maxSize);
+  return -maxSize;
 }

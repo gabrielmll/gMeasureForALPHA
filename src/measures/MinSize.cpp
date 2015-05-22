@@ -26,6 +26,11 @@ MinSize* MinSize::clone() const
   return new MinSize(*this);
 }
 
+const bool MinSize::monotone() const
+{
+  return true;
+}
+
 const bool MinSize::violationAfterRemoving(const unsigned int dimensionIdOfElementsSetAbsent, const vector<unsigned int>& elementsSetAbsent)
 {
   if (dimensionIdOfElementsSetAbsent == dimensionId)
@@ -44,5 +49,5 @@ const bool MinSize::violationAfterRemoving(const unsigned int dimensionIdOfEleme
 
 const float MinSize::optimisticValue() const
 {
-  return static_cast<float>(minSize);
+  return minSize;
 }

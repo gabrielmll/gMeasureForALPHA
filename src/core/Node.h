@@ -26,7 +26,7 @@ class Node
   const vector<unsigned int>& dimension(const unsigned int dimensionId) const;
   const unsigned int getArea() const;
 
-  static void setSimilarityShift(double similarityShift);
+  static void setSimilarityShift(const double similarityShift);
   static void setMaximalNbOfClosedNSetsForAgglomeration(const unsigned int maximalNbOfClosedNSetsForAgglomeration);
   static void insertOrDelete(Node* leaf);
   static pair<list<Node*>::const_iterator, list<Node*>::const_iterator> agglomerateAndSelect(const Trie* data);
@@ -41,7 +41,7 @@ class Node
   unordered_set<Node*> parents;
   vector<list<Node*>::iterator> children;
 
-  static double maxMembershipMinusShift;
+  static double maxMembershipMinusSimilarityShift;
   static unsigned int maximalNbOfClosedNSets;
   static bool isBelowMaximalNbOfClosedNSets;
   static double smallestG;
@@ -71,9 +71,9 @@ class Node
   static vector<unsigned int> idVectorUnion(const vector<unsigned int>& v1, const vector<unsigned int>& v2);
 
 #ifdef DEBUG_HA
-  static void printANode(Node* thisNode);
+  void print(ostream& out) const;
   static void printCadidates();
-  static void printNodeList(list<Node*> nodeList);
+  static void printNodeList(const list<Node*>& nodeList);
 #endif
 };
 

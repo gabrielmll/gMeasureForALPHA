@@ -567,8 +567,8 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const double 
     }
   if (isAgglomeration)
     {
-      // Compute Attribute::noisePerUnit * lambda_0 (see Mirkin's paper)
-      Node::setSimilarityShift(shiftMultiplier * (static_cast<double>(Attribute::noisePerUnit) - attributes.front()->averagePresentAndPotentialNoise() / largestNoise));
+      // Compute Attribute::noisePerUnit * (1 - shiftMultiplier * lambda_0) (see Mirkin's paper)
+      Node::setSimilarityShift(shiftMultiplier * (attributes.front()->averagePresentAndPotentialNoise() / largestNoise - Attribute::noisePerUnit));
     }
   // Initialize isClosedVector
   unsigned int nbOfUnclosedSymmetricAttribute = 0;
@@ -1182,7 +1182,7 @@ const bool Tree::monotone(const Measure* measure)
 {
   return measure->monotone();
 }
-
+  
 void Tree::setPresent(const unsigned int presentAttributeId)
 {
   const vector<Attribute*>::iterator attributeBegin = attributes.begin();

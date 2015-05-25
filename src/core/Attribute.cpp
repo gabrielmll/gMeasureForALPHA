@@ -218,9 +218,10 @@ const unsigned int Attribute::globalSize() const
 const double Attribute::totalPresentAndPotentialNoise() const
 {
   double totalNoise = 0;
-  for (const Value* value : values)
+  const vector<Value*>::const_iterator end = values.begin() + absentIndex;
+  for (vector<Value*>::const_iterator valueIt = values.begin(); valueIt != end; ++valueIt)
     {
-      totalNoise += value->getPresentAndPotentialNoise();      
+      totalNoise += (*valueIt)->getPresentAndPotentialNoise();
     }
   return totalNoise;
 }
@@ -735,9 +736,22 @@ vector<Value*>::const_iterator Attribute::absentEnd() const
 #endif
 
 #ifdef DEBUG_HA
-string Attribute::printLabelsById(unsigned int v1, unsigned int v2)
+void Attribute::printValuesFromDataIds(const vector<unsigned int>& dimension, const unsigned int dimensionId, ostream& out)
 {
-  return labelsVector[v1][v2];
+  const vector<string>& labels = labelsVector[dimensionId];
+  bool isFirst = true;
+  for (const unsigned int elementId : dimension)
+    {
+      if (isFirst)
+	{
+	  isFirst = false;
+	}
+      else
+	{
+	  out << outputElementSeparator;
+	}
+      out << labels[elementId];
+    }
 }
 #endif
 

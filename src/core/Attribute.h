@@ -126,7 +126,7 @@ class Attribute
 #endif
 
 #ifdef DEBUG_HA
-  static string printLabelsById(unsigned int v1, unsigned int v2);
+  static void printValuesFromDataIds(const vector<unsigned int>& dimension, const unsigned int dimensionId, ostream& out);
 #endif
 
  protected:

@@ -10,7 +10,7 @@
 
 #include "Node.h"
 
-double Node::maxMembershipMinusShift;
+double Node::maxMembershipMinusSimilarityShift;
 unsigned int Node::maximalNbOfClosedNSets;
 bool Node::isBelowMaximalNbOfClosedNSets = true;
 double Node::smallestG = -numeric_limits<double>::infinity();
@@ -33,14 +33,14 @@ Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), a
       nextTuple.push_back(pattern.back().begin());
     }
 #ifdef DEBUG_HA
-  cout << "\nmaxMembershipMinusShift :" << maxMembershipMinusShift;
-  cout << "\ntotalPresentAndPotentialNoise: " << attributes.front()->totalPresentAndPotentialNoise();
+  cout << endl << "maxMembershipMinusSimilarityShift: " << maxMembershipMinusSimilarityShift / Attribute::noisePerUnit;
+  cout << endl << "totalPresentAndPotentialNoise: " << attributes.front()->totalPresentAndPotentialNoise() / Attribute::noisePerUnit;
 #endif
-  membershipSum = maxMembershipMinusShift * area - attributes.front()->totalPresentAndPotentialNoise();
+  membershipSum = maxMembershipMinusSimilarityShift * area - attributes.front()->totalPresentAndPotentialNoise();
   g = membershipSum * membershipSum / area;
 
 #ifdef DEBUG_HA
-  printANode(this);
+  print(cout);
 #endif
 }
 
@@ -53,7 +53,7 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(
       area *= patternDimension.size();
       nextTuple.push_back(patternDimension.begin());
     }
-  membershipSum = maxMembershipMinusShift * area - data->countNoise(pattern);
+  membershipSum = maxMembershipMinusSimilarityShift * area - data->countNoise(pattern);
   g = membershipSum * membershipSum / area;
 }
 
@@ -65,7 +65,7 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator
       area *= patternDimension.size();
       nextTuple.push_back(patternDimension.begin());
     }
-  membershipSum = maxMembershipMinusShift * area;
+  membershipSum = maxMembershipMinusSimilarityShift * area;
   g = membershipSum * membershipSum / area;
   gEstimation = gEstimationFromLastTwoChildren();
 }
@@ -413,9 +413,9 @@ const bool Node::moreRelevant(const Node* node1, const Node* node2)
   return node2->g < node1->g;
 }
 
-void Node::setSimilarityShift(double similarityShift)
+void Node::setSimilarityShift(const double similarityShift)
 {
-  maxMembershipMinusShift = Attribute::noisePerUnit - similarityShift;
+  maxMembershipMinusSimilarityShift = similarityShift + Attribute::noisePerUnit;
 }
 
 void Node::setMaximalNbOfClosedNSetsForAgglomeration(const unsigned int maximalNbOfClosedNSetsForAgglomeration)
@@ -582,40 +582,39 @@ vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const ve
 }
 
 #ifdef DEBUG_HA
-void Node::printANode(Node* thisNode)
+void Node::print(ostream& out) const
 {
-  // How to get this int from patternDimension?
-  int nbPatternDimension = 0;
-  cout << "\n";
-  for (vector<unsigned int> patternDimension : thisNode->pattern)
+  unsigned int dimensionId = 0;
+  bool isFirst = true;
+  for (const vector<unsigned int>& dimension : pattern)
     {
-      for (unsigned int id : patternDimension)
+      if (isFirst)
 	{
-	  cout << Attribute::printLabelsById(nbPatternDimension, id) + " ";
+	  isFirst = false;
 	}
-      cout <<  " - ";
-      nbPatternDimension++;
+      else
+	{
+	  out << ' ';
+	}
+      Attribute::printValuesFromDataIds(dimension, dimensionId++, out);
     }
-  cout << "\n\tarea: " << thisNode->area;
-  cout << "\n\tmemberShipSum: " << thisNode->membershipSum;
-  cout << "\n\tg: " << thisNode->g;
-  cout << "\n";
+  out << endl << "  area: " << area << endl << "  membershipSum: " << membershipSum / Attribute::noisePerUnit << endl << "  g: " << g / Attribute::noisePerUnit / Attribute::noisePerUnit << endl;
 }
 
 void Node::printCadidates()
 {
   cout << "Candidates:\n";
-  for (Node* candidateIt : candidates)
+  for (const Node* candidate : candidates)
     {
-      printANode(candidateIt);
+      candidate->print(cout);
     }
 }
 
-void Node::printNodeList(list<Node*> nodeList)
+void Node::printNodeList(const list<Node*>& nodeList)
 {
-  for(Node* thisNode : nodeList)
+  for(const Node* node : nodeList)
     {
-      printANode(thisNode);
+      node->print(cout);
     }
 }
 #endif

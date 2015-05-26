@@ -34,7 +34,7 @@ Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), a
     }
 #ifdef DEBUG_HA
   cout << endl << "maxMembershipMinusSimilarityShift: " << maxMembershipMinusSimilarityShift / Attribute::noisePerUnit;
-  cout << endl << "totalPresentAndPotentialNoise: " << attributes.front()->totalPresentAndPotentialNoise() / Attribute::noisePerUnit;
+  cout << endl << "totalPresentAndPotentialNoise: " << attributes.front()->totalPresentAndPotentialNoise() / Attribute::noisePerUnit << endl;
 #endif
   membershipSum = maxMembershipMinusSimilarityShift * area - attributes.front()->totalPresentAndPotentialNoise();
   g = membershipSum * membershipSum / area;
@@ -305,11 +305,19 @@ void Node::insertInDendrogramFrontier()
 {
   // Store the generating children (to not make their union with *this)
   unordered_set<list<Node*>::iterator, list_iterator_hash> coveredChildren;
+#ifdef DEBUG_HA
+  cout << endl << "Its children are:" << endl;
+#endif
   for (const list<Node*>::iterator childIt : children)
     {
       coveredChildren.insert(childIt);
+#ifdef DEBUG_HA
+      (*childIt)->print(cout);
+#endif
     }
+
   children.clear();
+
   // This candidate goes to dendrogramFrontier
   dendrogramFrontier.push_back(this);
   // Construct the new candidates (or add children to it if already constructed)
@@ -348,28 +356,10 @@ void Node::insertInDendrogramFrontier()
 	    }
 	}
     }
+  // covered children
+  // TODO: Is this right?
+  unsigned int nbOfCoveredLeaves = coveredChildren.size();
 
- /*
-  * This must be deleted.
-  * There's no distance to calculate anymore.
-  * But there is G measure to be considered on dedrogram frontier
-  *
-  // Compute the distance to the covered child with the highest intrinsic distance
-  unsigned int maximalChildIntrinsicDistance = 0;
-  for (const list<Node*>::iterator coveredChildIt : coveredChildren)
-    {
-      if ((*coveredChildIt)->intrinsicDistance > maximalChildIntrinsicDistance)
-	{
-	  maximalChildIntrinsicDistance = (*coveredChildIt)->intrinsicDistance;
-	}
-    }
-  int distanceToParent = intrinsicDistance - maximalChildIntrinsicDistance;
-  // Set the relevance of the covered children
-  unsigned int nbOfCoveredLeaves = 1; // + 1 because, in deleteIrrelevantOffspring, new children are inserted before removing the one that became irrelevant
-  for (const list<Node*>::iterator coveredChildIt : coveredChildren)
-    {
-      nbOfCoveredLeaves += (*coveredChildIt)->setRelevance(distanceToParent);
-    }
   // Compute the children (removing the nodes that became irrelevant)
   children.reserve(nbOfCoveredLeaves);
   for (list<Node*>::iterator coveredChildIt : coveredChildren)
@@ -377,6 +367,8 @@ void Node::insertInDendrogramFrontier()
       const vector<list<Node*>::iterator> newChildren = (*coveredChildIt)->getParentChildren();
       if (newChildren.empty())
 	{
+	  cout << endl << "Dendrogram add child of: " << endl;
+	  print(cout);
 	  dendrogram.push_back(*coveredChildIt);
 	  children.push_back(--dendrogram.end());
 	}
@@ -387,7 +379,6 @@ void Node::insertInDendrogramFrontier()
 	}
       dendrogramFrontier.erase(coveredChildIt);
     }
-    */
 }
 
 const bool Node::lessPromising(const Node* node1, const Node* node2)
@@ -468,7 +459,11 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     }
 
 #ifdef DEBUG_HA
-  printCadidates();
+      printCadidates();
+      cout << endl << "DendrogramFrontier: " << endl;
+      printNodeList(dendrogramFrontier);
+      cout << endl << "Dendrogram:" << endl;
+      printNodeList(dendrogram);
 #endif
 
 
@@ -493,32 +488,38 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
       Node* candidateToInsert = *candidates.begin();
       candidates.erase(candidates.begin());
 
-// insertInDendrogramFrontier seems to NOT be cleaning the children
+      cout << endl << "Candidate to Insert:" << endl;
+      (*candidateToInsert).print(cout);
+      cout << endl << endl;
+
       candidateToInsert->insertInDendrogramFrontier();
 
-      cerr << "\n\tend of while";
+#ifdef DEBUG_HA
       printCadidates();
-      cerr << "DendrogramFrontier: ";
+      cout << endl << "DendrogramFrontier: " << endl;
       printNodeList(dendrogramFrontier);
+      cout << endl << "Dendrogram:" << endl;
+      printNodeList(dendrogram);
+#endif
     }
   // TODO: implement the second part of the selection of the relevant agglomerates
-  // Node* root = dendrogramFrontier.front();
-  // root->setRelevance(0);
-  // if (root->getParentChildren().empty())
-  //   {
-  //     dendrogram.push_back(root);
-  //   }
-  // else
-  //   {
-  //     delete root;
-  //   }
+  Node* root = dendrogramFrontier.front();
+   if (root->getParentChildren().empty())
+     {
+       dendrogram.push_back(root);
+     }
+   else
+     {
+       delete root;
+     }
   // Order the nodes, more relevant first
   dendrogram.sort(moreRelevant);
 
 #ifdef DEBUG_HA
-  cout << "Dendrogram:\n";
+  cout << endl << "FINAL Dendrogram:" << endl;
   printNodeList(dendrogram);
 #endif
+
   return pair<list<Node*>::const_iterator, list<Node*>::const_iterator>(dendrogram.begin(), dendrogram.end());
 }
 
@@ -603,7 +604,7 @@ void Node::print(ostream& out) const
 
 void Node::printCadidates()
 {
-  cout << "Candidates:\n";
+  cout << endl << "Candidates:" << endl;
   for (const Node* candidate : candidates)
     {
       candidate->print(cout);

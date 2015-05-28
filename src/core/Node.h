@@ -54,13 +54,12 @@ class Node
 
   Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1, const list<Node*>::iterator child2);
 
+  void computeG();
   const double gEstimationFromLastTwoChildren() const;
-  const unsigned int countLeaves() const;
-  const unsigned int countLeavesWithRelevanceAbove(const int ancestorRelevance) const;
+  const unsigned int countFutureChildren(const double ancestorG) const;
 
   void unlinkGeneratingPairsInvolving(const Node* child);
-  /* const unsigned int setRelevance(const int distanceToParent); */
-  void deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::iterator>& ancestorChildren);
+  void deleteOffspringWithSmallerG(const double ancestorG, vector<list<Node*>::iterator>& ancestorChildren);
   vector<list<Node*>::iterator> getParentChildren();
   void insertInDendrogramFrontier();
 
@@ -72,8 +71,6 @@ class Node
 
 #ifdef DEBUG_HA
   void print(ostream& out) const;
-  static void printCadidates();
-  static void printNodeList(const list<Node*>& nodeList);
 #endif
 };
 

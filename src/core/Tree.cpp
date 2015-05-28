@@ -298,7 +298,7 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const double 
   if (isToBePreProcessed)
     {
       // Pre-process
-      // PERF: if isAgglomeration, ignore the tuples with noise above min(epsilon); they were inserted so that they are considered when agglomerating but cannot be in a closed n-set
+      // PERF: if !isAgglomeration, ignore the tuples with noise above min(epsilon); they were inserted so that they are considered when agglomerating but cannot be in a closed n-set
       dimensions = NoisyTuples::preProcess(nbOfNonSelfLoopTuples, minimalNbOfNonSelfLoopTuples, epsilonVector, cliqueDimensionsParam, hyperplanes);
     }
   else
@@ -565,32 +565,35 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const double 
       delete hyperplane;
       ++hyperplaneOldId;
     }
+  // Initialize isClosedVector
+  vector<bool> isClosedVector(n, true);
   if (isAgglomeration)
     {
       // Compute Attribute::noisePerUnit * (1 - shiftMultiplier * lambda_0) (see Mirkin's paper)
       Node::setSimilarityShift(shiftMultiplier * (attributes.front()->averagePresentAndPotentialNoise() / largestNoise - Attribute::noisePerUnit));
     }
-  // Initialize isClosedVector
-  unsigned int nbOfUnclosedSymmetricAttribute = 0;
-  vector<bool> isClosedVector(n, true);
-  for (const unsigned int unclosedAttributeId : unclosedDimensions)
+  else
     {
-      const unsigned int internalAttributeId = external2InternalAttributeOrder[unclosedAttributeId];
-      if (internalAttributeId < firstSymmetricAttributeId || internalAttributeId > lastSymmetricAttributeId)
+      unsigned int nbOfUnclosedSymmetricAttribute = 0;
+      for (const unsigned int unclosedAttributeId : unclosedDimensions)
 	{
-	  isClosedVector[internalAttributeId] = false;
+	  const unsigned int internalAttributeId = external2InternalAttributeOrder[unclosedAttributeId];
+	  if (internalAttributeId < firstSymmetricAttributeId || internalAttributeId > lastSymmetricAttributeId)
+	    {
+	      isClosedVector[internalAttributeId] = false;
+	    }
+	  else
+	    {
+	      ++nbOfUnclosedSymmetricAttribute;
+	    }
 	}
-      else
+      if (nbOfUnclosedSymmetricAttribute != 0 && nbOfUnclosedSymmetricAttribute == cliqueDimensionsParam.size())
 	{
-	  ++nbOfUnclosedSymmetricAttribute;
-	}
-    }
-  if (nbOfUnclosedSymmetricAttribute != 0 && nbOfUnclosedSymmetricAttribute == cliqueDimensionsParam.size())
-    {
-      const vector<bool>::iterator end = isClosedVector.begin() + lastSymmetricAttributeId + 1;
-      for (vector<bool>::iterator isClosedVectorIt = isClosedVector.begin() + firstSymmetricAttributeId; isClosedVectorIt != end; ++isClosedVectorIt)
-	{
-	  *isClosedVectorIt = false;
+	  const vector<bool>::iterator end = isClosedVector.begin() + lastSymmetricAttributeId + 1;
+	  for (vector<bool>::iterator isClosedVectorIt = isClosedVector.begin() + firstSymmetricAttributeId; isClosedVectorIt != end; ++isClosedVectorIt)
+	    {
+	      *isClosedVectorIt = false;
+	    }
 	}
     }
   Attribute::setIsClosedVector(isClosedVector);

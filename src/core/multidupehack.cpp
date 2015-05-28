@@ -223,7 +223,7 @@ int main(int argc, char* argv[])
 	}
       if (vm.count("version"))
 	{
-	  cout << "multidupehack version 0.15.6" << endl;
+	  cout << "multidupehack version 0.16" << endl;
 	  return EX_OK;
 	}
       if (!vm.count("data-file"))

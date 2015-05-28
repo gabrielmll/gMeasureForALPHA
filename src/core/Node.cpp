@@ -25,23 +25,15 @@ Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), a
 {
   pattern.reserve(attributes.size());
   nextTuple.reserve(attributes.size());
-  for (vector<Attribute*>::const_iterator attributeIt = attributes.begin(); attributeIt != attributes.end(); ++attributeIt)
+  for (const Attribute* attribute : attributes)
     {
-      pattern.push_back((*attributeIt)->getPresentDataIds());
+      pattern.push_back(attribute->getPresentDataIds());
       sort(pattern.back().begin(), pattern.back().end());
       area *= pattern.back().size();
       nextTuple.push_back(pattern.back().begin());
     }
-#ifdef DEBUG_HA
-  cout << endl << "maxMembershipMinusSimilarityShift: " << maxMembershipMinusSimilarityShift / Attribute::noisePerUnit;
-  cout << endl << "totalPresentAndPotentialNoise: " << attributes.front()->totalPresentAndPotentialNoise() / Attribute::noisePerUnit << endl;
-#endif
   membershipSum = maxMembershipMinusSimilarityShift * area - attributes.front()->totalPresentAndPotentialNoise();
-  g = membershipSum * membershipSum / area;
-
-#ifdef DEBUG_HA
-  print(cout);
-#endif
+  computeG();
 }
 
 Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), children()
@@ -54,7 +46,7 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(
       nextTuple.push_back(patternDimension.begin());
     }
   membershipSum = maxMembershipMinusSimilarityShift * area - data->countNoise(pattern);
-  g = membershipSum * membershipSum / area;
+  computeG();
 }
 
 Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), children {child1It, child2It}
@@ -66,7 +58,7 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator
       nextTuple.push_back(patternDimension.begin());
     }
   membershipSum = maxMembershipMinusSimilarityShift * area;
-  g = membershipSum * membershipSum / area;
+  computeG();
   gEstimation = gEstimationFromLastTwoChildren();
 }
 
@@ -97,11 +89,14 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
       candidate = new Node(unionNSet, child1It, child2It);
       candidateNSets[unionNSet] = candidate;
       candidates.insert(candidates.begin(), candidate);
+      (*child1It)->parents.insert(candidate);
+      (*child2It)->parents.insert(candidate);
+      return;
     }
-  else
+  candidate = candidateNSetIt->second;
+  candidate->children.push_back(child1It);
+  if (candidate != *child2It)
     {
-      candidate = candidateNSetIt->second;
-      candidate->children.push_back(child1It);
       candidate->children.push_back(child2It);
       const double newGEstimation = candidate->gEstimationFromLastTwoChildren();
       if (newGEstimation > candidate->gEstimation)
@@ -110,9 +105,9 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
 	  candidate->gEstimation = newGEstimation;
 	  candidates.insert(hintIt, candidate);
 	}
+      (*child1It)->parents.insert(candidate);
+      (*child2It)->parents.insert(candidate);
     }
-  (*child1It)->parents.insert(candidate);
-  (*child2It)->parents.insert(candidate);
 }
 
 void Node::unlinkGeneratingPairsInvolving(const Node* child)
@@ -174,6 +169,16 @@ void Node::unlinkGeneratingPairsInvolving(const Node* child)
     }
 }
 
+void Node::computeG()
+{
+  if (membershipSum < 0)
+    {
+      g = -membershipSum * membershipSum / area;
+      return;
+    }
+  g = membershipSum * membershipSum / area;
+}
+
 const double Node::gEstimationFromLastTwoChildren() const
 {
   const Node& child1 = ***(children.end() - 2);
@@ -195,6 +200,10 @@ const double Node::gEstimationFromLastTwoChildren() const
 	{
 	  membershipSumEstimation += child1.membershipSum - estimatedSumAtIntersection;
 	}
+      if (membershipSumEstimation < 0)
+	{
+	  return -membershipSumEstimation * membershipSumEstimation / area;
+	}
       return membershipSumEstimation * membershipSumEstimation / area;
     }
   double membershipSumEstimation = child1.membershipSum;
@@ -203,25 +212,14 @@ const double Node::gEstimationFromLastTwoChildren() const
     {
       membershipSumEstimation += child2.membershipSum - estimatedSumAtIntersection;
     }
+  if (membershipSumEstimation < 0)
+    {
+      return -membershipSumEstimation * membershipSumEstimation / area;
+    }
   return membershipSumEstimation * membershipSumEstimation / area;
 }
 
-const unsigned int Node::countLeaves() const
-{
-  if (children.empty())
-    {
-      return 1;
-    }
-  unsigned int nbOfCoveredLeaves = 0;
-  for (const list<Node*>::iterator childIt : children)
-    {
-      nbOfCoveredLeaves += (*childIt)->countLeaves();
-    }
-  return nbOfCoveredLeaves;
-}
-/*
- * Should it be countLeaves with G above?
-const unsigned int Node::countLeavesWithRelevanceAbove(const int ancestorRelevance) const
+const unsigned int Node::countFutureChildren(const double ancestorG) const
 {
   if (children.empty())
     {
@@ -230,35 +228,19 @@ const unsigned int Node::countLeavesWithRelevanceAbove(const int ancestorRelevan
   unsigned int nbOfCoveredLeaves = 0;
   for (const list<Node*>::iterator childIt : children)
     {
-      if ((*childIt)->relevance > ancestorRelevance)
+      if ((*childIt)->g > ancestorG)
 	{
-	  nbOfCoveredLeaves += (*childIt)->countLeaves();
+	  ++nbOfCoveredLeaves;
 	}
       else
 	{
-	  nbOfCoveredLeaves += (*childIt)->countLeavesWithRelevanceAbove(ancestorRelevance);
+	  nbOfCoveredLeaves += (*childIt)->countFutureChildren(ancestorG);
 	}
     }
   return nbOfCoveredLeaves;
 }
-*/
-/*
- * setG (although G is never recalculated as relevance)
- * So this method should be deleted (?)
- *
-const unsigned int Node::setRelevance(const int distanceToParent)
-{
-  relevance = distanceToParent - intrinsicDistance;
-  const unsigned int nbOfLeaves = countLeavesWithRelevanceAbove(relevance);
-  if (nbOfLeaves == 0)
-    {
-      return 1;
-    }
-  return nbOfLeaves;
-}
-*/
 
-void Node::deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::iterator>& ancestorChildren)
+void Node::deleteOffspringWithSmallerG(const double ancestorG, vector<list<Node*>::iterator>& ancestorChildren)
 {
   for (list<Node*>::iterator childIt : children)
     {
@@ -278,7 +260,8 @@ void Node::deleteOffspringWithSmallerG(const int ancestorG, vector<list<Node*>::
 vector<list<Node*>::iterator> Node::getParentChildren()
 {
   bool isIrrelevant = true;
-  for (vector<list<Node*>::iterator>::reverse_iterator childItIt = children.rbegin(); childItIt != children.rend(); )
+  const vector<list<Node*>::iterator>::reverse_iterator rend = children.rend();
+  for (vector<list<Node*>::iterator>::reverse_iterator childItIt = children.rbegin(); childItIt != rend; )
     {
       if ((**childItIt)->g > g)
 	{
@@ -303,51 +286,30 @@ vector<list<Node*>::iterator> Node::getParentChildren()
 
 void Node::insertInDendrogramFrontier()
 {
-  // Store the generating children (to not make their union with *this)
-  unordered_set<list<Node*>::iterator, list_iterator_hash> coveredChildren;
-#ifdef DEBUG_HA
-  cout << endl << "Its children are:" << endl;
-#endif
-  for (const list<Node*>::iterator childIt : children)
-    {
-      coveredChildren.insert(childIt);
-#ifdef DEBUG_HA
-      (*childIt)->print(cout);
-#endif
-    }
-
   children.clear();
-
-  // This candidate goes to dendrogramFrontier
+  // *this goes to dendrogramFrontier
   dendrogramFrontier.push_back(this);
-  // Construct the new candidates (or add children to it if already constructed)
+  // Construct the new candidates or add children to it if already constructed
   const list<Node*>::iterator thisIt = --dendrogramFrontier.end();
   for (list<Node*>::iterator otherChildIt = dendrogramFrontier.begin(); otherChildIt != thisIt; ++otherChildIt)
     {
-      if (coveredChildren.find(otherChildIt) == coveredChildren.end())
-	{
-	  constructCandidate(otherChildIt, thisIt);
-	}
-     }
+      // NB: subsets of *this are found during candidate construction and added to children
+      constructCandidate(otherChildIt, thisIt);
+    }
+#ifdef DEBUG_HA
+  cout << "  " << children.size() << " children" << endl;
+#endif
   // Remove this n-set from candidateNSets
   candidateNSets.erase(pattern);
-  if (!children.empty())
+  unsigned int nbOfFutureChildren = 1; // + 1 because, in deleteOffspringWithSmallerG, new children are inserted before removing the one that became irrelevant
+  vector<list<Node*>::iterator> newChildren;
+  for (const list<Node*>::iterator childIt : children)
     {
-      // subsets of *this were found during candidate construction: they are at the odd positions of children (this at the even positions) and *this became a parent of *this
-      parents.erase(this);
-      for (vector<list<Node*>::iterator>::iterator childItIt = children.begin(); childItIt != children.end(); childItIt = childItIt + 2)
+      // Unlink **childIt from *this and its other parents
+      (*childIt)->parents.erase(this);
+      for (Node* parent : (*childIt)->parents)
 	{
-	  coveredChildren.insert(*childItIt);
-	}
-      children.clear();
-    }
-  // Unlink covered children from their parents
-  for (const list<Node*>::iterator coveredChildIt : coveredChildren)
-    {
-      (*coveredChildIt)->parents.erase(this);
-      for (Node* parent : (*coveredChildIt)->parents)
-	{
-	  parent->unlinkGeneratingPairsInvolving(*coveredChildIt);
+	  parent->unlinkGeneratingPairsInvolving(*childIt);
 	  if (parent->children.empty())
 	    {
 	      candidateNSets.erase(parent->pattern);
@@ -355,30 +317,32 @@ void Node::insertInDendrogramFrontier()
 	      delete parent;
 	    }
 	}
-    }
-  // covered children
-  // TODO: Is this right?
-  unsigned int nbOfCoveredLeaves = coveredChildren.size();
-
-  // Compute the children (removing the nodes that became irrelevant)
-  children.reserve(nbOfCoveredLeaves);
-  for (list<Node*>::iterator coveredChildIt : coveredChildren)
-    {
-      const vector<list<Node*>::iterator> newChildren = (*coveredChildIt)->getParentChildren();
-      if (newChildren.empty())
+      // Compute the number of future children to **childIt allocate enough space for this children (essential to guarantee no reallocation in getParentChildren)
+      const unsigned int nbOfFutureChildrenBelowChild = (*childIt)->countFutureChildren(g);
+      if (nbOfFutureChildrenBelowChild == 0)
 	{
-	  cout << endl << "Dendrogram add child of: " << endl;
-	  print(cout);
-	  dendrogram.push_back(*coveredChildIt);
-	  children.push_back(--dendrogram.end());
+	  ++nbOfFutureChildren;
 	}
       else
 	{
-	  delete *coveredChildIt;
-	  children.insert(children.end(), newChildren.begin(), newChildren.end());
+	  nbOfFutureChildren += nbOfFutureChildrenBelowChild;
 	}
-      dendrogramFrontier.erase(coveredChildIt);
+      // Compute the new children, which are not the future children yet because, when this isIrrelevant will be computed in getParentChildren, there must be at least one child per set of covered leaves
+      const vector<list<Node*>::iterator> childrenOfOneChildWithAtLeastItsG = (*childIt)->getParentChildren();
+      if (childrenOfOneChildWithAtLeastItsG.empty())
+	{
+	  dendrogram.push_back(*childIt);
+	  newChildren.push_back(--dendrogram.end());
+	}
+      else
+	{
+	  delete *childIt;
+	  newChildren.insert(newChildren.end(), childrenOfOneChildWithAtLeastItsG.begin(), childrenOfOneChildWithAtLeastItsG.end());
+	}
+      dendrogramFrontier.erase(childIt);
     }
+  children = std::move(newChildren);
+  children.reserve(nbOfFutureChildren);
 }
 
 const bool Node::lessPromising(const Node* node1, const Node* node2)
@@ -388,15 +352,7 @@ const bool Node::lessPromising(const Node* node1, const Node* node2)
 
 const bool Node::morePromising(const Node* node1, const Node* node2)
 {
-  if (node1->g > node2->g)
-    {
-      return true;
-    }
-  if (node1->g == node2->g)
-    {
-      return node1->gEstimation > node2->gEstimation || (node1->gEstimation == node2->gEstimation && node1 < node2);
-    }
-  return false;
+  return node1->g > node2->g || (node1->g == node2->g && (node1->gEstimation > node2->gEstimation || (node1->gEstimation == node2->gEstimation && node1 < node2)));
 }
 
 const bool Node::moreRelevant(const Node* node1, const Node* node2)
@@ -448,25 +404,21 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     {
       return pair<list<Node*>::const_iterator, list<Node*>::const_iterator>(dendrogram.begin(), dendrogram.begin());
     }
+#ifdef DEBUG_HA
+  cout << endl << "Dendrogram:" << endl << endl;
+#endif
   // Candidate construction
   for (multiset<Node*>::iterator child1It = leaves.begin(); child1It != leaves.end(); child1It = leaves.erase(child1It))
     {
+#ifdef DEBUG_HA
+      (*child1It)->print(cout);
+#endif
       dendrogramFrontier.push_front(*child1It);
       for (list<Node*>::iterator child2It = dendrogramFrontier.begin(); ++child2It != dendrogramFrontier.end(); )
 	{
 	  constructCandidate(dendrogramFrontier.begin(), child2It);
 	}
     }
-
-#ifdef DEBUG_HA
-      printCadidates();
-      cout << endl << "DendrogramFrontier: " << endl;
-      printNodeList(dendrogramFrontier);
-      cout << endl << "Dendrogram:" << endl;
-      printNodeList(dendrogram);
-#endif
-
-
   // Hierarchical agglomeration
   while (!candidates.empty())
     {
@@ -478,7 +430,7 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     	  // candidate->g is partial
     	  candidates.erase(candidates.begin());
     	  const bool isBetter = data->isBetterNSet(sqrt(highestG * candidate->area), candidate->pattern, candidate->nextTuple, candidate->membershipSum);
-    	  candidate->g = candidate->membershipSum * candidate->membershipSum / candidate->area;
+    	  candidate->computeG();
     	  if (isBetter)
     	    {
     	      highestG = candidate->g;
@@ -486,47 +438,32 @@ pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerate
     	  candidates.insert(candidate);
     	}
       Node* candidateToInsert = *candidates.begin();
-      candidates.erase(candidates.begin());
-
-      cout << endl << "Candidate to Insert:" << endl;
-      (*candidateToInsert).print(cout);
-      cout << endl << endl;
-
-      candidateToInsert->insertInDendrogramFrontier();
-
 #ifdef DEBUG_HA
-      printCadidates();
-      cout << endl << "DendrogramFrontier: " << endl;
-      printNodeList(dendrogramFrontier);
-      cout << endl << "Dendrogram:" << endl;
-      printNodeList(dendrogram);
+      (*candidateToInsert).print(cout);
 #endif
+      candidates.erase(candidates.begin());
+      candidateToInsert->insertInDendrogramFrontier();
     }
-  // TODO: implement the second part of the selection of the relevant agglomerates
   Node* root = dendrogramFrontier.front();
-   if (root->getParentChildren().empty())
-     {
-       dendrogram.push_back(root);
-     }
-   else
-     {
-       delete root;
-     }
+  if (root->getParentChildren().empty())
+    {
+      dendrogram.push_back(root);
+    }
+  else
+    {
+      delete root;
+    }
   // Order the nodes, more relevant first
   dendrogram.sort(moreRelevant);
-
-#ifdef DEBUG_HA
-  cout << endl << "FINAL Dendrogram:" << endl;
-  printNodeList(dendrogram);
-#endif
-
   return pair<list<Node*>::const_iterator, list<Node*>::const_iterator>(dendrogram.begin(), dendrogram.end());
 }
 
-vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const vector<unsigned int>& v2)
+vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1, const vector<unsigned int>& v2)
 {
   vector<unsigned int> unionVector;
   unionVector.reserve(v1.size() + v2.size());
+  const vector<unsigned int>::const_iterator v1End = v1.end();
+  const vector<unsigned int>::const_iterator v2End = v2.end();
   vector<unsigned int>::const_iterator v1It = v1.begin();
   vector<unsigned int>::const_iterator v2It = v2.begin();
   while (true)
@@ -534,9 +471,9 @@ vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const ve
       if (*v1It < *v2It)
 	{
 	  unionVector.push_back(*v1It);
-	  if (++v1It == v1.end())
+	  if (++v1It == v1End)
 	    {
-	      for (; v2It != v2.end(); ++v2It)
+	      for (; v2It != v2End; ++v2It)
 		{
 		  unionVector.push_back(*v2It);
 		}
@@ -547,18 +484,18 @@ vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const ve
 	{
 	  if (*v1It == *v2It)
 	    {
-	      if (++v1It == v1.end())
+	      if (++v1It == v1End)
 		{
-		  for (; v2It != v2.end(); ++v2It)
+		  for (; v2It != v2End; ++v2It)
 		    {
 		      unionVector.push_back(*v2It);
 		    }
 		  return unionVector;
 		}
 	      unionVector.push_back(*v2It);
-	      if (++v2It == v2.end())
+	      if (++v2It == v2End)
 		{
-		  for (; v1It != v1.end(); ++v1It)
+		  for (; v1It != v1End; ++v1It)
 		    {
 		      unionVector.push_back(*v1It);
 		    }
@@ -568,9 +505,9 @@ vector<unsigned int> Node::idVectorUnion(const vector<unsigned int>& v1,const ve
 	  else
 	    {
 	      unionVector.push_back(*v2It);
-	      if (++v2It == v2.end())
+	      if (++v2It == v2End)
 		{
-		  for (; v1It != v1.end(); ++v1It)
+		  for (; v1It != v1End; ++v1It)
 		    {
 		      unionVector.push_back(*v1It);
 		    }
@@ -599,23 +536,7 @@ void Node::print(ostream& out) const
 	}
       Attribute::printValuesFromDataIds(dimension, dimensionId++, out);
     }
-  out << endl << "  area: " << area << endl << "  membershipSum: " << membershipSum / Attribute::noisePerUnit << endl << "  g: " << g / Attribute::noisePerUnit / Attribute::noisePerUnit << endl;
-}
-
-void Node::printCadidates()
-{
-  cout << endl << "Candidates:" << endl;
-  for (const Node* candidate : candidates)
-    {
-      candidate->print(cout);
-    }
-}
-
-void Node::printNodeList(const list<Node*>& nodeList)
-{
-  for(const Node* node : nodeList)
-    {
-      node->print(cout);
-    }
+  const double noisePerUnitSquared = static_cast<double>(Attribute::noisePerUnit) * Attribute::noisePerUnit;
+  out << endl << "  area: " << area << endl << "  membershipSum: " << membershipSum / Attribute::noisePerUnit << endl << "  g: " << g / noisePerUnitSquared << endl << "  gEstimation: " << gEstimation / noisePerUnitSquared << endl;
 }
 #endif

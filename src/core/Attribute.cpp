@@ -764,4 +764,3 @@ const bool Attribute::lessAppealingIrrelevant(const Attribute* attribute, const 
 {
   return (attribute->absentIndex - attribute->irrelevantIndex) * otherAttribute->values.size() < (otherAttribute->absentIndex - otherAttribute->irrelevantIndex) * attribute->values.size();
 }
-

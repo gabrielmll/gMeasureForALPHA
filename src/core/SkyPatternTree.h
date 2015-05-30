@@ -36,7 +36,7 @@ class SkyPatternTree: public Tree
   SkyPatternTree() = delete;
   SkyPatternTree(const SkyPatternTree&) = delete;
   SkyPatternTree(SkyPatternTree&&) = delete;
-  SkyPatternTree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVector, const vector<unsigned int>& cliqueDimensions, const vector<double>& tauVector, const vector<unsigned int>& minSizes, const unsigned int minArea, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparator, const char* patternSizeSeparator, const char* sizeSeparator, const char* sizeAreaSeparator, const bool isSizePrinted, const bool isAreaPrinted, const bool isIntermediateSkylinePrinted);
+  SkyPatternTree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVector, const vector<unsigned int>& cliqueDimensions, const vector<double>& tauVector, const vector<unsigned int>& minSizes, const unsigned int minArea, const bool isReductionOnly, const bool isAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparator, const char* patternSizeSeparator, const char* sizeSeparator, const char* sizeAreaSeparator, const bool isSizePrinted, const bool isAreaPrinted, const bool isIntermediateSkylinePrinted);
 
   ~SkyPatternTree();
 
@@ -44,6 +44,7 @@ class SkyPatternTree: public Tree
   SkyPatternTree& operator=(SkyPatternTree&&) = delete;
 
   void initMeasures(const vector<unsigned int>& maxSizes, const int maxArea, const vector<unsigned int>& maximizedSizeDimensions, const vector<unsigned int>& minimizedSizeDimensions, const bool isAreaMaximized, const bool isAreaMinimized, const vector<string>& groupFileNames, const vector<unsigned int>& groupMinSizes, const vector<unsigned int>& groupMaxSizes, const vector<vector<float>>& groupMinRatios, const vector<vector<float>>& groupMinPiatetskyShapiros, const vector<vector<float>>& groupMinLeverages, const vector<vector<float>>& groupMinForces, const vector<vector<float>>& groupMinYulesQs, const vector<vector<float>>& groupMinYulesYs, const char* groupElementSeparator, const char* groupDimensionElementsSeparator, vector<unsigned int>& groupMaximizedSizes, const vector<unsigned int>& groupMinimizedSizes, const vector<vector<float>>& groupMaximizedRatios, const vector<vector<float>>& groupMaximizedPiatetskyShapiros, const vector<vector<float>>& groupMaximizedLeverages, const vector<vector<float>>& groupMaximizedForces, const vector<vector<float>>& groupMaximizedYulesQs, const vector<vector<float>>& groupMaximizedYulesYs, const char* utilityValueFileName, const float minUtility, const char* valueElementSeparator, const char* valueDimensionSeparator, const bool isUtilityMaximized, const char* slopePointFileName, const float minSlope, const char* pointElementSeparator, const char* pointDimensionSeparator, const bool isSlopeMaximized, const float densityThreshold);
+  void terminate(const double maximalNbOfCandidateAgglomerates);
 
  protected:
   vector<Measure*> measuresToMaximize;
@@ -56,8 +57,6 @@ class SkyPatternTree: public Tree
   static bool isIntermediateSkylinePrinted;
 
   SkyPatternTree(const SkyPatternTree& parent, const vector<Measure*>& mereConstraints, const vector<Measure*>& measuresToMaximize);
-
-  void terminate();
 
   const bool leftSubtree(const Attribute& presentAttribute) const;
 

@@ -59,12 +59,12 @@ template<typename T> vector<vector<T>> getMatrixFromFile(const string& fileName)
 
 int main(int argc, char* argv[])
 {
+  double maximalNbOfCandidateAgglomerates = 0;
   Tree* root;
   // Parsing the command line and the option file
   try
     {
       string optionFileName;
-      int maximalNbOfClosedNSetsForAgglomeration = 0;
       vector<double> epsilonVector;
       vector<unsigned int> cliqueDimensions;
       vector<double> tauVector;
@@ -114,11 +114,11 @@ int main(int argc, char* argv[])
 	("clique,c", value<string>(), "set attributes on which closed cliques are searched (0 being the first attribute)")
 	("tau,t", value<string>(), "set maximal differences between two contiguous elements in numerical attributes or 0 for infinity/non-numerical attribute (by default 0 for every attribute)")
 	("reduction,r", "do not compute closed ET-n-sets, only output the input data without the elements that cannot be in any closed ET-n-sets given the size constraints")
-	("ha", value<int>(&maximalNbOfClosedNSetsForAgglomeration), "hierarchically agglomerate the less noisy closed ET-n-sets (maximal quantity in argument) and output the relevant agglomerates, more relevant first")
+	("ha", value<double>(&maximalNbOfCandidateAgglomerates), "hierarchically agglomerate the closed ET-n-sets (in argument, maximal nb of candidates in millions) and output the relevant agglomerates, more relevant first")
+	("shift", value<double>()->default_value(1), "set multiplier of the reduced dataset density as a similarity shift for agglomeration")
 	("unclosed,u", value<string>(), "set attributes in which the computed ET-n-sets need not be closed")
 	("density,d", value<float>()->default_value(1), "set threshold to trigger a dense storage of the data (0 for a completely dense storage, 1 for a sparse storage)")
 	("large,l", "quick computation of closed ET-n-sets that are large in all the dimensions (longer extractions when other closed ET-n-sets are valid)")
-	("shift", value<double>()->default_value(1), "set multiplier of the dataset density as a similarity shift for agglomeration")
 	("out,o", value<string>(&outputFileName), "set output file name (by default [data-file].out if closed ET-net sets are computed, [data-file].red if the input data is only reduced with option --reduction)")
 	("psky", "print pattern skyline whenever refined");
       options_description sizeConstraints("Size constraints (on the command line or in the option file)");
@@ -259,9 +259,9 @@ int main(int argc, char* argv[])
 	      throw UsageException("clique option should provide two different attributes ids!");
 	    }
 	}
-      if (vm.count("ha") && maximalNbOfClosedNSetsForAgglomeration < 1)
+      if (vm.count("ha") && maximalNbOfCandidateAgglomerates <= 0)
 	{
-	  throw UsageException("ha option should provide a strictly positive integer!");
+	  throw UsageException("ha option should provide a strictly positive double!");
 	}
       if (vm.count("area") && minArea < 0)
 	{
@@ -511,7 +511,7 @@ int main(int argc, char* argv[])
 	}
       if (vm.count("sky-s") || vm.count("sky-S") || vm.count("sky-a") || vm.count("sky-A") || vm.count("sky-gs") || vm.count("sky-gS") || vm.count("sky-gr") || vm.count("sky-gps") || vm.count("sky-gl") || vm.count("sky-gf") || vm.count("sky-gyq") || vm.count("sky-gyy") || vm.count("sky-utility") || vm.count("sky-slope"))
 	{
-	  root = new SkyPatternTree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), vm["shift"].as<double>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfClosedNSetsForAgglomeration, unclosedDimensions, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"), vm.count("psky"));
+	  root = new SkyPatternTree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), vm["shift"].as<double>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfCandidateAgglomerates != 0, unclosedDimensions, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"), vm.count("psky"));
 	  try
 	    {
 	      static_cast<SkyPatternTree*>(root)->initMeasures(maxSizes, maxArea, maximizedSizeDimensions, minimizedSizeDimensions, vm.count("sky-a"), vm.count("sky-A"), groupFileNames, groupMinSizes, groupMaxSizes, groupMinRatios, groupMinPiatetskyShapiros, groupMinLeverages, groupMinForces, groupMinYulesQs, groupMinYulesYs, groupElementSeparator.c_str(), groupDimensionElementsSeparator.c_str(), groupMaximizedSizes, groupMinimizedSizes, groupMaximizedRatios, groupMaximizedPiatetskyShapiros, groupMaximizedLeverages, groupMaximizedForces, groupMaximizedYulesQs, groupMaximizedYulesYs, utilityValueFileName.c_str(), minUtility, valueElementSeparator.c_str(), valueDimensionSeparator.c_str(), vm.count("sky-utility"), slopePointFileName.c_str(), minSlope, pointElementSeparator.c_str(), pointDimensionSeparator.c_str(), vm.count("sky-slope"), vm["density"].as<float>());
@@ -524,7 +524,7 @@ int main(int argc, char* argv[])
 	}
       else
 	{
-	  root = new Tree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), vm["shift"].as<double>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfClosedNSetsForAgglomeration, unclosedDimensions, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"));
+	  root = new Tree(vm["data-file"].as<string>().c_str(), vm["density"].as<float>(), vm["shift"].as<double>(), epsilonVector, cliqueDimensions, tauVector, minSizes, minArea, vm.count("reduction"), maximalNbOfCandidateAgglomerates != 0, unclosedDimensions, vm["ies"].as<string>().c_str(), vm["ids"].as<string>().c_str(), outputFileName.c_str(), vm["ods"].as<string>().c_str(), vm["css"].as<string>().c_str(), vm["ss"].as<string>().c_str(), vm["sas"].as<string>().c_str(), vm.count("ps"), vm.count("pa"));
 	  try
 	    {
 	      root->initMeasures(maxSizes, maxArea, groupFileNames, groupMinSizes, groupMaxSizes, groupMinRatios, groupMinPiatetskyShapiros, groupMinLeverages, groupMinForces, groupMinYulesQs, groupMinYulesYs, groupElementSeparator.c_str(), groupDimensionElementsSeparator.c_str(), utilityValueFileName.c_str(), minUtility, valueElementSeparator.c_str(), valueDimensionSeparator.c_str(), slopePointFileName.c_str(), minSlope, pointElementSeparator.c_str(), pointDimensionSeparator.c_str(), vm["density"].as<float>());
@@ -558,6 +558,7 @@ int main(int argc, char* argv[])
       return EX_DATAERR;
     }
   root->mine();
+  root->terminate(maximalNbOfCandidateAgglomerates);
   delete root;
   return EX_OK;
 }

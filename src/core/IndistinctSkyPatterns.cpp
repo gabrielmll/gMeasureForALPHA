@@ -96,7 +96,7 @@ void IndistinctSkyPatterns::toNodes(const Trie* data)
 	{
 	  sort(dimension.begin(), dimension.end());
 	}
-      Node::insertOrDelete(new Node(pattern, data));
+      new Node(pattern, data);
     }
 }
 

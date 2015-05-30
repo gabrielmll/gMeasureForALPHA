@@ -36,7 +36,6 @@
 
 /* DEBUG turns on the output (on the standard output) of information during the extraction of the closed error-tolerant n-sets. This option may be enabled by someone who wishes to precisely understand how this extraction is performed on a small data set. */
 /* #define DEBUG */
-#define DEBUG_HA
 
 /* VERBOSE_DIM_CHOICE turns on the output (on the standard output) of information regarding the choice of the next dimension to be enumerated. Combined with DEBUG, this option may be enabled by someone who wishes to precisely understand how this choice is performed on a small data set. */
 /* #define VERBOSE_DIM_CHOICE */
@@ -66,5 +65,7 @@
 // Assert
 /* ASSERT is used to check the correctness of the computed noise counters. */
 /* #define ASSERT */
+
+/* #define DEBUG_HA */
 
 #endif /*PARAMETERS_H_*/

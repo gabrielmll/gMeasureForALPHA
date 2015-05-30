@@ -11,18 +11,16 @@
 #include "Node.h"
 
 double Node::maxMembershipMinusSimilarityShift;
-unsigned int Node::maximalNbOfClosedNSets;
-bool Node::isBelowMaximalNbOfClosedNSets = true;
-double Node::smallestG = -numeric_limits<double>::infinity();
+unsigned int Node::nbOfGoodParents = 0;
 
-multiset<Node*, const bool(*)(const Node*, const Node*)> Node::leaves(lessPromising);
 list<Node*> Node::dendrogram;
 list<Node*> Node::dendrogramFrontier;
 set<Node*, const bool(*)(const Node*, const Node*)> Node::candidates(morePromising);
 unordered_map<vector<vector<unsigned int>>, Node*, vector_hash<vector<unsigned int>>> Node::candidateNSets;
 
-Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), children()
+Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), lastGoodParentIt(), children()
 {
+  ++nbOfGoodParents;
   pattern.reserve(attributes.size());
   nextTuple.reserve(attributes.size());
   for (const Attribute* attribute : attributes)
@@ -34,10 +32,12 @@ Node::Node(const vector<Attribute*>& attributes): pattern(), membershipSum(0), a
     }
   membershipSum = maxMembershipMinusSimilarityShift * area - attributes.front()->totalPresentAndPotentialNoise();
   computeG();
+  dendrogramFrontier.push_back(this);
 }
 
-Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), children()
+Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), lastGoodParentIt(), children()
 {
+  ++nbOfGoodParents;
   nextTuple.reserve(nSet.size());
   for (vector<unsigned int>& patternDimension : pattern)
     {
@@ -47,9 +47,10 @@ Node::Node(const vector<vector<unsigned int>>& nSet, const Trie* data): pattern(
     }
   membershipSum = maxMembershipMinusSimilarityShift * area - data->countNoise(pattern);
   computeG();
+  dendrogramFrontier.push_back(this);
 }
 
-Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), children {child1It, child2It}
+Node::Node(const vector<vector<unsigned int>>& nSet, const list<Node*>::iterator child1It, const list<Node*>::iterator child2It): pattern(nSet), membershipSum(0), area(1), g(0), gEstimation(0), nextTuple(), parents(), lastGoodParentIt(), children {child1It, child2It}
 {
   nextTuple.reserve(nSet.size());
   for (const vector<unsigned int>& patternDimension : pattern)
@@ -82,32 +83,41 @@ void Node::constructCandidate(const list<Node*>::iterator child1It, const list<N
       unionNSet.push_back(idVectorUnion(*otherPatternIt, patternDimension));
       ++otherPatternIt;
     }
-  Node* candidate;
   const unordered_map<vector<vector<unsigned int>>, Node*, vector_hash<vector<unsigned int>>>::iterator candidateNSetIt = candidateNSets.find(unionNSet);
   if (candidateNSetIt == candidateNSets.end())
     {
-      candidate = new Node(unionNSet, child1It, child2It);
+      Node* candidate = new Node(unionNSet, child1It, child2It);
       candidateNSets[unionNSet] = candidate;
       candidates.insert(candidates.begin(), candidate);
       (*child1It)->parents.insert(candidate);
       (*child2It)->parents.insert(candidate);
       return;
     }
-  candidate = candidateNSetIt->second;
-  candidate->children.push_back(child1It);
-  if (candidate != *child2It)
+  Node* candidate = candidateNSetIt->second;
+  if (candidate == *child1It)
     {
       candidate->children.push_back(child2It);
-      const double newGEstimation = candidate->gEstimationFromLastTwoChildren();
-      if (newGEstimation > candidate->gEstimation)
-	{
-	  const set<Node*>::const_iterator hintIt = candidates.erase(candidates.find(candidate));
-	  candidate->gEstimation = newGEstimation;
-	  candidates.insert(hintIt, candidate);
-	}
-      (*child1It)->parents.insert(candidate);
-      (*child2It)->parents.insert(candidate);
+      return;
     }
+  candidate->children.push_back(child1It);
+  candidate->children.push_back(child2It);
+  // const double newGEstimation = candidate->gEstimationFromLastTwoChildren();
+  // if (newGEstimation > candidate->gEstimation)
+  //   {
+  //     const double oldGEstimation = candidate->gEstimation;
+  //     for (const list<Node*>::iterator candidateChildIt : unordered_set<list<Node*>::iterator, list_iterator_hash>(candidate->children.begin(), candidate->children.end() - 2))
+  // 	{
+  // 	  (*candidateChildIt)->parents.erase(candidate);
+  // 	  candidate->gEstimation = newGEstimation;
+  // 	  (*candidateChildIt)->parents.insert(candidate);
+  // 	  candidate->gEstimation = oldGEstimation;
+  // 	}
+  //     candidates.erase(candidate);
+  //     candidate->gEstimation = newGEstimation;
+  //     candidates.insert(candidate);
+  //   }
+  (*child1It)->parents.insert(candidate);
+  (*child2It)->parents.insert(candidate);
 }
 
 void Node::unlinkGeneratingPairsInvolving(const Node* child)
@@ -260,6 +270,21 @@ void Node::deleteOffspringWithSmallerG(const double ancestorG, vector<list<Node*
 vector<list<Node*>::iterator> Node::getParentChildren()
 {
   bool isIrrelevant = true;
+  // Compute the number of future children to reserve enough space (essential to guarantee no reallocation when deleteOffspringWithSmallerG inserts new children)
+  unsigned int nbOfFutureChildren = 1; // + 1 because, in deleteOffspringWithSmallerG, new children are inserted before removing those with smaller g measures
+  for (const list<Node*>::iterator childIt : children)
+    {
+      const unsigned int nbOfFutureChildrenBelowChild = (*childIt)->countFutureChildren(g);
+      if (nbOfFutureChildrenBelowChild == 0)
+	{
+	  ++nbOfFutureChildren;
+	}
+      else
+	{
+	  nbOfFutureChildren += nbOfFutureChildrenBelowChild;
+	}
+    }
+  children.reserve(nbOfFutureChildren);
   const vector<list<Node*>::iterator>::reverse_iterator rend = children.rend();
   for (vector<list<Node*>::iterator>::reverse_iterator childItIt = children.rbegin(); childItIt != rend; )
     {
@@ -293,15 +318,13 @@ void Node::insertInDendrogramFrontier()
   const list<Node*>::iterator thisIt = --dendrogramFrontier.end();
   for (list<Node*>::iterator otherChildIt = dendrogramFrontier.begin(); otherChildIt != thisIt; ++otherChildIt)
     {
-      // NB: subsets of *this are found during candidate construction and added to children
-      constructCandidate(otherChildIt, thisIt);
+      constructCandidate(thisIt, otherChildIt); // Subsets of *this are found during candidate construction and inserted in children
     }
 #ifdef DEBUG_HA
   cout << "  " << children.size() << " children" << endl;
 #endif
   // Remove this n-set from candidateNSets
   candidateNSets.erase(pattern);
-  unsigned int nbOfFutureChildren = 1; // + 1 because, in deleteOffspringWithSmallerG, new children are inserted before removing the one that became irrelevant
   vector<list<Node*>::iterator> newChildren;
   for (const list<Node*>::iterator childIt : children)
     {
@@ -317,17 +340,7 @@ void Node::insertInDendrogramFrontier()
 	      delete parent;
 	    }
 	}
-      // Compute the number of future children to **childIt allocate enough space for this children (essential to guarantee no reallocation in getParentChildren)
-      const unsigned int nbOfFutureChildrenBelowChild = (*childIt)->countFutureChildren(g);
-      if (nbOfFutureChildrenBelowChild == 0)
-	{
-	  ++nbOfFutureChildren;
-	}
-      else
-	{
-	  nbOfFutureChildren += nbOfFutureChildrenBelowChild;
-	}
-      // Compute the new children, which are not the future children yet because, when this isIrrelevant will be computed in getParentChildren, there must be at least one child per set of covered leaves
+      // Compute the new children, which are not the future children yet because, when this isIrrelevant will be computed in getParentChildren, there must be one child per partition of the covered leaves
       const vector<list<Node*>::iterator> childrenOfOneChildWithAtLeastItsG = (*childIt)->getParentChildren();
       if (childrenOfOneChildWithAtLeastItsG.empty())
 	{
@@ -341,13 +354,7 @@ void Node::insertInDendrogramFrontier()
 	}
       dendrogramFrontier.erase(childIt);
     }
-  children = std::move(newChildren);
-  children.reserve(nbOfFutureChildren);
-}
-
-const bool Node::lessPromising(const Node* node1, const Node* node2)
-{
-  return node1->g < node2->g;
+  children = newChildren;
 }
 
 const bool Node::morePromising(const Node* node1, const Node* node2)
@@ -365,61 +372,32 @@ void Node::setSimilarityShift(const double similarityShift)
   maxMembershipMinusSimilarityShift = similarityShift + Attribute::noisePerUnit;
 }
 
-void Node::setMaximalNbOfClosedNSetsForAgglomeration(const unsigned int maximalNbOfClosedNSetsForAgglomeration)
+pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerateAndSelect(const Trie* data, const double maximalNbOfCandidateAgglomerates)
 {
-  maximalNbOfClosedNSets = maximalNbOfClosedNSetsForAgglomeration;
-}
-
-void Node::insertOrDelete(Node* leaf)
-{
-  if (leaves.size() == maximalNbOfClosedNSets)
-    {
-      if (isBelowMaximalNbOfClosedNSets)
-	{
-	  isBelowMaximalNbOfClosedNSets = false;
-	  cerr << "Warning: more than " << maximalNbOfClosedNSets << " closed ET-" << leaf->pattern.size() << "-sets" << endl << "Only retaining those with the smallest relative noises" << endl;
-	}
-      if (lessPromising(leaf, *leaves.begin()))
-	{
-	  delete leaf;
-	  return;
-	}
-      smallestG = (*leaves.begin())->g;
-      for (multiset<Node*>::iterator leafIt = leaves.begin(); leafIt != leaves.end() && (*leafIt)->g == smallestG; leafIt = leaves.erase(leafIt))
-	{
-	  delete *leafIt;
-	}
-    }
-  if (leaf->g > smallestG)
-    {
-      leaves.insert(leaf);
-      return;
-    }
-  delete leaf;
-}
-
-pair<list<Node*>::const_iterator, list<Node*>::const_iterator> Node::agglomerateAndSelect(const Trie* data)
-{
-  if (leaves.empty())
+  if (dendrogramFrontier.empty())
     {
       return pair<list<Node*>::const_iterator, list<Node*>::const_iterator>(dendrogram.begin(), dendrogram.begin());
     }
 #ifdef DEBUG_HA
-  cout << endl << "Dendrogram:" << endl << endl;
+  cout << endl << "Dendrogram:" << endl << endl << "* " << nbOfGoodParents << " leaves generating at most " << static_cast<unsigned int>(maximalNbOfCandidateAgglomerates / nbOfGoodParents) << " candidates each:" << endl;
 #endif
+  nbOfGoodParents = maximalNbOfCandidateAgglomerates / nbOfGoodParents;
   // Candidate construction
-  for (multiset<Node*>::iterator child1It = leaves.begin(); child1It != leaves.end(); child1It = leaves.erase(child1It))
+  const list<Node*>::iterator end = dendrogramFrontier.end();
+  for (list<Node*>::iterator child1It = dendrogramFrontier.begin(); child1It != end; ++child1It)
     {
 #ifdef DEBUG_HA
       (*child1It)->print(cout);
 #endif
-      dendrogramFrontier.push_front(*child1It);
-      for (list<Node*>::iterator child2It = dendrogramFrontier.begin(); ++child2It != dendrogramFrontier.end(); )
+      for (list<Node*>::iterator child2It = dendrogramFrontier.begin(); child2It != child1It; ++child2It)
 	{
-	  constructCandidate(dendrogramFrontier.begin(), child2It);
+	  constructCandidate(child1It, child2It);
 	}
     }
   // Hierarchical agglomeration
+#ifdef DEBUG_HA
+  cout << endl << "* Agglomerates:" << endl;
+#endif
   while (!candidates.empty())
     {
       // Searching for the candidates with the smallest intrinsic distance and the largest area (in case of equality according to both criteria, the one with the smallest memory address is retained)

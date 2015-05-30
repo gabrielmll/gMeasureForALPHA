@@ -17,7 +17,7 @@ unordered_set<IndistinctSkyPatterns*, skyPatternHasher, skyPatternEqual> SkyPatt
 bool SkyPatternTree::isSomeOptimizedMeasureNotMonotone;
 bool SkyPatternTree::isIntermediateSkylinePrinted;
 
-SkyPatternTree::SkyPatternTree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam, const bool isIntermediateSkylinePrintedParam) : Tree(dataFileName, densityThreshold, shiftMultiplier, epsilonVectorParam, cliqueDimensionsParam, tauVectorParam, minSizesParam, minAreaParam, isReductionOnly, maximalNbOfClosedNSetsForAgglomeration, unclosedDimensions, inputElementSeparator, inputDimensionSeparator, outputFileName, outputDimensionSeparatorParam, patternSizeSeparatorParam, sizeSeparatorParam, sizeAreaSeparatorParam, isSizePrintedParam, isAreaPrintedParam), measuresToMaximize()
+SkyPatternTree::SkyPatternTree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const bool isAgglomerationParam, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam, const bool isIntermediateSkylinePrintedParam) : Tree(dataFileName, densityThreshold, shiftMultiplier, epsilonVectorParam, cliqueDimensionsParam, tauVectorParam, minSizesParam, minAreaParam, isReductionOnly, isAgglomerationParam, unclosedDimensions, inputElementSeparator, inputDimensionSeparator, outputFileName, outputDimensionSeparatorParam, patternSizeSeparatorParam, sizeSeparatorParam, sizeAreaSeparatorParam, isSizePrintedParam, isAreaPrintedParam), measuresToMaximize()
 {
   isIntermediateSkylinePrinted = isIntermediateSkylinePrintedParam;
 }
@@ -738,7 +738,7 @@ void SkyPatternTree::initMeasures(const vector<unsigned int>& maxSizesParam, con
   isSomeOptimizedMeasureNotMonotone = !measuresToMaximize.back()->monotone();
 }
 
-void SkyPatternTree::terminate()
+void SkyPatternTree::terminate(const double maximalNbOfCandidateAgglomerates)
 {
   if (isAgglomeration)
     {
@@ -758,7 +758,7 @@ void SkyPatternTree::terminate()
 	  delete indistinctSkyPatterns;
 	}
     }
-  Tree::terminate();
+  Tree::terminate(maximalNbOfCandidateAgglomerates);
 }
 
 const bool SkyPatternTree::violationAfterAdding(const unsigned int dimensionIdOfElementsSetPresent, const vector<unsigned int>& elementsSetPresent)

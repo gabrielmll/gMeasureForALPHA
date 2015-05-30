@@ -50,7 +50,7 @@ string Tree::sizeAreaSeparator;
 bool Tree::isSizePrinted;
 bool Tree::isAreaPrinted;
 
-Tree::Tree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const unsigned int maximalNbOfClosedNSetsForAgglomeration, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam) : attributes(), mereConstraints(), isEnumeratedElementPotentiallyPreventingClosedness(false)
+Tree::Tree(const char* dataFileName, const float densityThreshold, const double shiftMultiplier, const vector<double>& epsilonVectorParam, const vector<unsigned int>& cliqueDimensionsParam, const vector<double>& tauVectorParam, const vector<unsigned int>& minSizesParam, const unsigned int minAreaParam, const bool isReductionOnly, const bool isAgglomerationParam, const vector<unsigned int>& unclosedDimensions, const char* inputElementSeparator, const char* inputDimensionSeparator, const char* outputFileName, const char* outputDimensionSeparatorParam, const char* patternSizeSeparatorParam, const char* sizeSeparatorParam, const char* sizeAreaSeparatorParam, const bool isSizePrintedParam, const bool isAreaPrintedParam) : attributes(), mereConstraints(), isEnumeratedElementPotentiallyPreventingClosedness(false)
 {
 #ifdef TIME
   overallBeginning = steady_clock::now();
@@ -92,12 +92,8 @@ Tree::Tree(const char* dataFileName, const float densityThreshold, const double 
     {
       throw UsageException(("epsilon option should provide at most " + lexical_cast<string>(n) + " coefficients!").c_str());
     }
-  isAgglomeration = maximalNbOfClosedNSetsForAgglomeration != 0;
-  if (isAgglomeration)
-    {
-      Node::setMaximalNbOfClosedNSetsForAgglomeration(maximalNbOfClosedNSetsForAgglomeration);
-    }
-  else
+  isAgglomeration = isAgglomerationParam;
+  if (!isAgglomeration)
     {
       double minMembership = 1;
       if (epsilonVectorParam.size() == n)
@@ -992,14 +988,12 @@ void Tree::mine()
       cout << "Numeric precision: " << numeric_limits<double>::epsilon() << endl;
 #endif
 #endif
-      terminate();
       return;
     }
   peel();
-  terminate();
 }
 
-void Tree::terminate()
+void Tree::terminate(const double maximalNbOfCandidateAgglomerates)
 {
   MinUtility::deleteTupleValues();
   MinSlope::deleteTuplePoints();
@@ -1012,7 +1006,7 @@ void Tree::terminate()
 #ifdef DETAILED_TIME
       startingPoint = steady_clock::now();
 #endif
-      for (pair<list<Node*>::const_iterator, list<Node*>::const_iterator> nodeRange = Node::agglomerateAndSelect(data); nodeRange.first != nodeRange.second; ++nodeRange.first)
+      for (pair<list<Node*>::const_iterator, list<Node*>::const_iterator> nodeRange = Node::agglomerateAndSelect(data, maximalNbOfCandidateAgglomerates * 1000000); nodeRange.first != nodeRange.second; ++nodeRange.first)
 	{
 #ifdef OUTPUT
 	  bool isFirst = true;
@@ -1457,7 +1451,7 @@ void Tree::validPattern() const
 {
   if (isAgglomeration)
     {
-      Node::insertOrDelete(new Node(attributes));
+      new Node(attributes);
     }
 #ifdef OUTPUT
   else
